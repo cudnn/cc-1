@@ -32,33 +32,14 @@ class KittiRawLoader(object):
 
         self.min_speed = min_speed
         self.get_gt = get_gt
-        self.collect_train_folders()
+        self.collect_train_folders()#make self.scenes
 
-    def collect_static_frames(self, static_frames_file):
-        with open(static_frames_file, 'r') as f:
-            frames = f.readlines()
-        self.static_frames = {}
-        for fr in frames:
-            if fr == '\n':
-                continue
-            date, drive, frame_id = fr.split(' ')
-            curr_fid = '%.10d' % (np.int(frame_id[:-1]))
-            if drive not in self.static_frames.keys():
-                self.static_frames[drive] = []
-            self.static_frames[drive].append(curr_fid)
 
-    def collect_train_folders(self):
-        self.scenes = []
-        for date in self.date_list:
-            drive_set = (self.dataset_dir/date).dirs()
-            for dr in drive_set:
-                if dr.name[:-5] not in self.test_scenes:
-                    self.scenes.append(dr)
-
-    def collect_scenes(self, drive):
+    #public
+    def collect_scenes(self, drive):#drive 当前路径
         train_scenes = []
         for c in self.cam_ids:
-            oxts = sorted((drive/'oxts'/'data').files('*.txt'))
+            oxts = sorted((drive/'oxts'/'data').files('*.txt'))#list
             scene_data = {'cid': c, 'dir': drive, 'speed': [], 'frame_id': [], 'rel_path': drive.name + '_' + c}
             for n, f in enumerate(oxts):
                 metadata = np.genfromtxt(f)
@@ -73,7 +54,8 @@ class KittiRawLoader(object):
 
             train_scenes.append(scene_data)
         return train_scenes
-
+    #public
+    #generator using yield rather than return
     def get_scene_imgs(self, scene_data):
         def construct_sample(scene_data, i, frame_id):
             sample = [self.load_image(scene_data, i)[0], frame_id]
@@ -96,6 +78,29 @@ class KittiRawLoader(object):
                 if (drive not in self.static_frames.keys()) or (frame_id not in self.static_frames[drive]):
                     yield construct_sample(scene_data, i, frame_id)
 
+
+    #private
+    def collect_static_frames(self, static_frames_file):
+        with open(static_frames_file, 'r') as f:
+            frames = f.readlines()
+        self.static_frames = {}
+        for fr in frames:
+            if fr == '\n':
+                continue
+            date, drive, frame_id = fr.split(' ')
+            curr_fid = '%.10d' % (np.int(frame_id[:-1]))
+            if drive not in self.static_frames.keys():
+                self.static_frames[drive] = []
+            self.static_frames[drive].append(curr_fid)
+    #private
+    def collect_train_folders(self):
+        self.scenes = []
+        for date in self.date_list:
+            drive_set = (self.dataset_dir/date).dirs()
+            for dr in drive_set:
+                if dr.name[:-5] not in self.test_scenes:
+                    self.scenes.append(dr)
+    #private
     def get_P_rect(self, scene_data, zoom_x, zoom_y):
         #print(zoom_x, zoom_y)
         calib_file = scene_data['dir'].parent/'calib_cam_to_cam.txt'

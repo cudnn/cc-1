@@ -13,7 +13,7 @@ from utils import tensor2array
 parser = argparse.ArgumentParser(description='Inference script for DispNet learned with \
                                  Structure from Motion Learner inference on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--output-disp", action='store_true', help="save disparity img",default='uav0000013_01073_v/')
+parser.add_argument("--output-disp", action='store_true', help="save disparity img",default='uav0000105_00001_v/')
 parser.add_argument("--output-depth", action='store_true', help="save depth img",default='output_depth/')
 parser.add_argument("--pretrained",  type=str, help="pretrained DispNet path",default='/home/roit/models/cc/geometry/dispnet_k.pth.tar')
 parser.add_argument("--img-height", default=756, type=int, help="Image height")
@@ -22,7 +22,7 @@ parser.add_argument("--no-resize", action='store_true', help="no resizing is don
 
 parser.add_argument("--dataset-list", default=None, type=str, help="Dataset list file")
 parser.add_argument("--dataset-dir",
-                    default='/home/roit/datasets/VisDrone/VisDrone2019-VID-train/sequences/uav0000013_01073_v/', type=str, help="Dataset directory")
+                    default='/home/roit/datasets/VisDrone/VisDrone2019-VID-test-challenge/sequences/uav0000105_00001_v/', type=str, help="Dataset directory")
 parser.add_argument("--output-dir", default='output', type=str, help="Output directory")
 
 parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
@@ -73,7 +73,7 @@ def main():
         if args.output_disp:
             disp = (255*tensor2array(output, max_value=None, colormap='bone')).astype(np.uint8)
             disp = disp.transpose(1,2,0)
-            plt.imsave(disp_dir/'{}_disp{}'.format(file.namebase,file.ext), disp,cmap='plasma')
+            plt.imsave(disp_dir/'{}'.format(file.namebase,file.ext), disp,cmap='plasma')
         #if args.output_depth:
         #    depth = 1/output
          #   depth = (255*tensor2array(depth, max_value=10, colormap='rainbow')).astype(np.uint8).transpose(1,2,0)

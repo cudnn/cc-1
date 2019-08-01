@@ -517,8 +517,8 @@ def train(train_loader, disp_net, pose_net, mask_net, flow_net, optimizer, epoch
         exp_masks_target = consensus_exp_masks(flows_cam_fwd, flows_cam_bwd, flow_fwd, flow_bwd, tgt_img_var,
                                                ref_imgs_var[2], ref_imgs_var[1], wssim=args.wssim, wrig=args.wrig,
                                                ws=args.smooth_loss_weight)
-        rigidity_mask_fwd = [(flows_cam_fwd_ - flow_fwd_).abs() for flows_cam_fwd_, flow_fwd_ in zip(flows_cam_fwd, flow_fwd)]  # .normalize()
-        rigidity_mask_bwd = [(flows_cam_bwd_ - flow_bwd_).abs() for flows_cam_bwd_, flow_bwd_ in zip(flows_cam_bwd, flow_bwd)]  # .normalize()
+        rigidity_mask_fwd = [(flows_cam_fwd_i - flow_fwd_i).abs() for flows_cam_fwd_i, flow_fwd_i in zip(flows_cam_fwd, flow_fwd)]  # .normalize()
+        rigidity_mask_bwd = [(flows_cam_bwd_i - flow_bwd_i).abs() for flows_cam_bwd_i, flow_bwd_i in zip(flows_cam_bwd, flow_bwd)]  # .normalize()
 
 
         # 4.explainability_mask
