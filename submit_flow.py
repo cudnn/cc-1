@@ -126,21 +126,21 @@ def main():
 
         _, _, h_pred, w_pred = flow_cam.size()
         _, _, h_gt, w_gt = tgt_img_original.size()
-        rigidity_pred_mask = nn.functional.upsample(rigidity_mask_combined, size=(h_pred, w_pred), mode='bilinear')
+        rigidity_pred_mask = nn.functional.interpolate(rigidity_mask_combined, size=(h_pred, w_pred), mode='bilinear')
 
         non_rigid_pred = (rigidity_pred_mask<=args.THRESH).type_as(flow_fwd).expand_as(flow_fwd) * flow_fwd
         rigid_pred = (rigidity_pred_mask>args.THRESH).type_as(flow_cam).expand_as(flow_cam) * flow_cam
         total_pred = non_rigid_pred + rigid_pred
 
-        pred_fullres = nn.functional.upsample(total_pred, size=(h_gt, w_gt), mode='bilinear')
+        pred_fullres = nn.functional.interpolate(total_pred, size=(h_gt, w_gt), mode='bilinear')
         pred_fullres[:,0,:,:] = pred_fullres[:,0,:,:] * (w_gt/w_pred)
         pred_fullres[:,1,:,:] = pred_fullres[:,1,:,:] * (h_gt/h_pred)
 
-        flow_fwd_fullres = nn.functional.upsample(flow_fwd, size=(h_gt, w_gt), mode='bilinear')
+        flow_fwd_fullres = nn.functional.interpolate(flow_fwd, size=(h_gt, w_gt), mode='bilinear')
         flow_fwd_fullres[:,0,:,:] = flow_fwd_fullres[:,0,:,:] * (w_gt/w_pred)
         flow_fwd_fullres[:,1,:,:] = flow_fwd_fullres[:,1,:,:] * (h_gt/h_pred)
 
-        flow_cam_fullres = nn.functional.upsample(flow_cam, size=(h_gt, w_gt), mode='bilinear')
+        flow_cam_fullres = nn.functional.interpolate(flow_cam, size=(h_gt, w_gt), mode='bilinear')
         flow_cam_fullres[:,0,:,:] = flow_cam_fullres[:,0,:,:] * (w_gt/w_pred)
         flow_cam_fullres[:,1,:,:] = flow_cam_fullres[:,1,:,:] * (h_gt/h_pred)
 

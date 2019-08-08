@@ -5,7 +5,7 @@ from path import Path
 import random
 
 
-def crawl_folders(folders_list, sequence_length):
+def crawl_folders(folders_list, sequence_length,shuffle = False):
         sequence_set = []
         demi_length = (sequence_length-1)//2
         for folder in folders_list:
@@ -20,7 +20,10 @@ def crawl_folders(folders_list, sequence_length):
                     if j != 0:
                         sample['ref_imgs'].append(imgs[i+j])
                 sequence_set.append(sample)
-        random.shuffle(sequence_set)
+        if shuffle:
+            random.shuffle(sequence_set)
+        else:
+            pass
         return sequence_set
 
 
@@ -46,7 +49,11 @@ class SequenceFolder(data.Dataset):
         self.root = Path(root)
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
-        self.samples = crawl_folders(self.scenes, sequence_length)
+        if train:
+            self.samples = crawl_folders(self.scenes, sequence_length,shuffle=True)
+        else:
+            self.samples = crawl_folders(self.scenes, sequence_length,shuffle=False)
+
         self.transform = transform
 
     def __getitem__(self, index):

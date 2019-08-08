@@ -62,7 +62,7 @@ class Model(nn.Module):
         idx = list(np.array(idx).flatten())
         self.idx_fwd = Variable(torch.LongTensor(np.array(idx)).cuda(), requires_grad=False)
         self.idx_bwd = Variable(torch.LongTensor(np.array(list(reversed(idx)))).cuda(), requires_grad=False)
-        self.upsample =  nn.Upsample(scale_factor=2, mode='bilinear')
+        self.upsample =  nn.Upsample(scale_factor=2, mode='bilinear',align_corners=True)
         self.softmax2d = nn.Softmax2d()
 
         self.conv1a = conv_feat_block(3,16)
@@ -273,11 +273,11 @@ class Model(nn.Module):
         flow5_bwd_fullres = -2.5*self.upsample(flow5_bwd_up)
         flow6_bwd_fullres = -1.25*self.upsample(flow6_bwd_up)
 
-        occ2_fullres = F.upsample(occ2, scale_factor=4)
-        occ3_fullres = F.upsample(occ3, scale_factor=4)
-        occ4_fullres = F.upsample(occ4, scale_factor=4)
-        occ5_fullres = F.upsample(occ5, scale_factor=4)
-        occ6_fullres = F.upsample(occ6, scale_factor=4)
+        occ2_fullres = F.interpolate(occ2, scale_factor=4)
+        occ3_fullres = F.interpolate(occ3, scale_factor=4)
+        occ4_fullres = F.interpolate(occ4, scale_factor=4)
+        occ5_fullres = F.interpolate(occ5, scale_factor=4)
+        occ6_fullres = F.interpolate(occ6, scale_factor=4)
 
         if self.training:
             flow_fwd = [flow2_fwd_fullres, flow3_fwd_fullres, flow4_fwd_fullres, flow5_fwd_fullres, flow6_fwd_fullres]
@@ -287,7 +287,7 @@ class Model(nn.Module):
             if self.nlevels==6:
                 flow_fwd.append(0.625*flow6_fwd_up)
                 flow_bwd.append(-0.625*flow6_bwd_up)
-                occ.append(F.upsample(occ6, scale_factor=2))
+                occ.append(F.interpolate(occ6, scale_factor=2))
 
             return flow_fwd, flow_bwd, occ
         else:

@@ -12,7 +12,7 @@ class VisDroneRawLoader(object):
     def __init__(self,
                  dataset_dir,
                  static_frames_file=None,
-                 img_height=128,
+                 img_height=256,
                  img_width=512,
                  min_speed=2,
                  get_gt=False):
@@ -20,7 +20,7 @@ class VisDroneRawLoader(object):
         test_scene_file = dir_path / 'visdrone_test_scenes.txt'
         with open(test_scene_file, 'r') as f:
             test_scenes = f.readlines()
-        self.test_scenes = [t[:-1] for t in test_scenes]
+        self.test_scenes = [t[:-1] for t in test_scenes]#最后要留空白行?
         self.dataset_dir = Path(dataset_dir)
         self.img_height = img_height
         self.img_width = img_width
@@ -38,7 +38,7 @@ class VisDroneRawLoader(object):
         self.scenes = []
         drive_set = self.dataset_dir.dirs()
         for dr in drive_set:
-            if dr.name not in self.test_scenes:
+            if dr.name not in self.test_scenes:#如果不在test列表内,用来处理. 实质是一个禁忌表, 表内的用来inference
                 self.scenes.append(dr)
 
 

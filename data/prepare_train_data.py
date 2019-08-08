@@ -17,7 +17,7 @@ parser.add_argument("--static-frames", default=None,
                     (careful, on KITTI some frames have incorrect speed)")
 parser.add_argument("--with-gt", action='store_true',default=False,
                     help="If available (e.g. with KITTI), will store ground truth along with images, for validation")
-parser.add_argument("--dump-root", type=str, default='/home/roit/datasets/visdrone_raw128512', help="Where to dump the data")
+parser.add_argument("--dump-root", type=str, default='/home/roit/datasets/visdrone_raw_256512', help="Where to dump the data")
 parser.add_argument("--height", type=int, default=256, help="image height")
 parser.add_argument("--width", type=int, default=512, help="image width")
 parser.add_argument("--num-threads", type=int, default=4, help="number of threads to use")
@@ -91,7 +91,7 @@ def main():
     with open(args.dump_root / 'train.txt', 'w') as tf:
         with open(args.dump_root / 'val.txt', 'w') as vf:
             for s in tqdm(subfolders):
-                if np.random.random() < 0.1:
+                if np.random.random() < 0.1:#随机分割
                     vf.write('{}\n'.format(s.name))
                 else:
                     tf.write('{}\n'.format(s.name))

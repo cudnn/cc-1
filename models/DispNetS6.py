@@ -114,19 +114,19 @@ class DispNetS6(nn.Module):
         disp4 = self.alpha * self.predict_disp4(out_iconv4) + self.beta
 
         out_upconv3 = crop_like(self.upconv3(out_iconv4), out_conv2)
-        disp4_up = crop_like(nn.functional.upsample(disp4, scale_factor=2, mode='bilinear'), out_conv2)
+        disp4_up = crop_like(nn.functional.interpolate(disp4, scale_factor=2, mode='bilinear'), out_conv2)
         concat3 = torch.cat((out_upconv3, out_conv2, disp4_up), 1)
         out_iconv3 = self.iconv3(concat3)
         disp3 = self.alpha * self.predict_disp3(out_iconv3) + self.beta
 
         out_upconv2 = crop_like(self.upconv2(out_iconv3), out_conv1)
-        disp3_up = crop_like(nn.functional.upsample(disp3, scale_factor=2, mode='bilinear'), out_conv1)
+        disp3_up = crop_like(nn.functional.interpolate(disp3, scale_factor=2, mode='bilinear'), out_conv1)
         concat2 = torch.cat((out_upconv2, out_conv1, disp3_up), 1)
         out_iconv2 = self.iconv2(concat2)
         disp2 = self.alpha * self.predict_disp2(out_iconv2) + self.beta
 
         out_upconv1 = crop_like(self.upconv1(out_iconv2), x)
-        disp2_up = crop_like(nn.functional.upsample(disp2, scale_factor=2, mode='bilinear'), x)
+        disp2_up = crop_like(nn.functional.interpolate(disp2, scale_factor=2, mode='bilinear'), x)
         concat1 = torch.cat((out_upconv1, disp2_up), 1)
         out_iconv1 = self.iconv1(concat1)
         disp1 = self.alpha * self.predict_disp1(out_iconv1) + self.beta

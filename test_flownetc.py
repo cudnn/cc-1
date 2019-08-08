@@ -32,7 +32,7 @@ def compute_epe(gt, pred, op='sub'):
     _, _, h_pred, w_pred = pred.size()
     bs, nc, h_gt, w_gt = gt.size()
     u_gt, v_gt = gt[:,0,:,:], gt[:,1,:,:]
-    pred = torch.nn.functional.upsample(pred, size=(h_gt, w_gt), mode='bilinear')
+    pred = torch.nn.functional.interpolate(pred, size=(h_gt, w_gt), mode='bilinear')
     u_pred = pred[:,0,:,:] * (w_gt/w_pred)
     v_pred = pred[:,1,:,:] * (h_gt/h_pred)
     if op=='sub':

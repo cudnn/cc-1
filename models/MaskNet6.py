@@ -103,12 +103,12 @@ class MaskNet6(nn.Module):
             out_upconv2 = self.deconv2(torch.cat((out_upconv3, out_conv2), 1))#[:, :, 0:out_conv1.size(2), 0:out_conv1.size(3)]
             out_upconv1 = self.deconv1(torch.cat((out_upconv2, out_conv1), 1))#[:, :, 0:input.size(2), 0:input.size(3)]
 
-            exp_mask6 = nn.functional.sigmoid(self.pred_mask6(out_upconv6))
-            exp_mask5 = nn.functional.sigmoid(self.pred_mask5(out_upconv5))
-            exp_mask4 = nn.functional.sigmoid(self.pred_mask4(out_upconv4))
-            exp_mask3 = nn.functional.sigmoid(self.pred_mask3(out_upconv3))
-            exp_mask2 = nn.functional.sigmoid(self.pred_mask2(out_upconv2))
-            exp_mask1 = nn.functional.sigmoid(self.pred_mask1(out_upconv1))
+            exp_mask6 = torch.sigmoid(self.pred_mask6(out_upconv6))
+            exp_mask5 = torch.sigmoid(self.pred_mask5(out_upconv5))
+            exp_mask4 = torch.sigmoid(self.pred_mask4(out_upconv4))
+            exp_mask3 = torch.sigmoid(self.pred_mask3(out_upconv3))
+            exp_mask2 = torch.sigmoid(self.pred_mask2(out_upconv2))
+            exp_mask1 = torch.sigmoid(self.pred_mask1(out_upconv1))
         else:
             exp_mask6 = None
             exp_mask5 = None

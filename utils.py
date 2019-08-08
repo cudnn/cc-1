@@ -4,6 +4,10 @@ import numpy as np
 import torch
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from path import Path
+from collections import OrderedDict
+import datetime
+
 
 def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
     # Construct the list colormap, with interpolated values for higer resolution
@@ -61,3 +65,69 @@ def save_checkpoint(save_path, dispnet_state, posenet_state, masknet_state, flow
     if is_best:
         for prefix in file_prefixes:
             shutil.copyfile(save_path/'{}_{}'.format(prefix,filename), save_path/'{}_model_best.pth.tar'.format(prefix))
+
+
+def save_path_formatter(args, parser):
+    def is_default(key, value):
+        return value == parser.get_default(key)
+    args_dict = vars(args)
+    data_folder_name = str(Path(args_dict['data']).normpath().name)
+    folder_string = [data_folder_name]
+    if not is_default('epochs', args_dict['epochs']):
+        folder_string.append('{}epochs'.format(args_dict['epochs']))
+    keys_with_prefix = OrderedDict()
+    keys_with_prefix['epoch_size'] = 'epoch_size'
+    keys_with_prefix['sequence_length'] = 'seq'
+    keys_with_prefix['rotation_mode'] = 'rot_'
+    keys_with_prefix['padding_mode'] = 'padding_'
+    keys_with_prefix['batch_size'] = 'b'
+    keys_with_prefix['lr'] = 'lr'
+    #keys_with_prefix['photo_loss_weight'] = 'p'
+    #keys_with_prefix['mask_loss_weight'] = 'm'
+    #keys_with_prefix['smooth_loss_weight'] = 's'
+
+    for key, prefix in keys_with_prefix.items():
+        value = args_dict[key]
+        if not is_default(key, value):
+            folder_string.append('{}{}'.format(prefix, value))
+    save_path = Path(','.join(folder_string))
+    timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
+    return save_path/timestamp
+
+
+
+def flow2rgb(flow_map, max_value):# [2,370,1224]
+    '''
+        [2,h,w]2[3,h,w]
+
+    :param flow_map:
+    :param max_value:
+    :return:
+    '''
+    #eturned Tensor shares the same storage with the original one.
+    # In-place modifications on either of them will be seen, and may trigger errors in correctness checks.
+    def one_scale(flow_map, max_value):
+        flow_map_np = flow_map.detach().cpu().numpy()#??what trick
+        _, h, w = flow_map_np.shape#[2,h,w]
+
+        flow_map_np[:,(flow_map_np[0] == 0) & (flow_map_np[1] == 0)] = float('nan')#??? 两幅图中某个位置像素都等于0的置位nan
+
+        rgb_map = np.ones((3,h,w)).astype(np.float32)#占位符
+        #normalization
+        if max_value is not None:
+            normalized_flow_map = flow_map_np / max_value
+        else:
+            #normalized_flow_map = (flow_map_np-flow_map_np.mean())/np.ndarray.std(flow_map_np)
+            normalized_flow_map = flow_map_np / (np.abs(flow_map_np).max())
+
+        #vector2color coding
+        rgb_map[0] += normalized_flow_map[0]
+        rgb_map[1] -= 0.5*(normalized_flow_map[0] + normalized_flow_map[1])
+        rgb_map[2] += normalized_flow_map[1]
+        return rgb_map.clip(0,1)#上溢,下溢处理,smaller than 0 become 0, and values larger than 1 become 1, 区间内的值不动
+
+
+    if type(flow_map) not in [tuple, list]:
+        return  one_scale(flow_map,max_value)
+    else:
+        return [one_scale(flow_map_,max_value) for flow_map_ in flow_map]

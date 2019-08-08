@@ -213,12 +213,17 @@ def consensus_exp_masks(cam_flows_fwd, cam_flows_bwd, flows_fwd, flows_bwd, tgt_
 
         return exp_target
 
-    exp_masks_target = []
-    for i in range(len(cam_flows_fwd)):
-        exp_masks_target.append(one_scale(cam_flows_fwd[i], cam_flows_bwd[i], flows_fwd[i], flows_bwd[i], tgt_img, ref_img_fwd, ref_img_bwd, ws))
-        ws = ws / 2.3
+    assert(len(cam_flows_bwd)==len(cam_flows_fwd)==len(flows_bwd)==len(flows_fwd))
+    if type(cam_flows_bwd) not in [tuple, list]:#如果都是单个不是list
+        return one_scale(cam_flows_fwd, cam_flows_bwd, flows_fwd, flows_bwd, tgt_img, ref_img_fwd, ref_img_bwd, ws)
+    else:
+        ret = [one_scale(cam_flows_fwd_, cam_flows_bwd_, flows_fwd_, flows_bwd_, tgt_img, ref_img_fwd, ref_img_bwd, ws)
+               for (cam_flows_fwd_, cam_flows_bwd_, flows_fwd_, flows_bwd_) in
+               zip(cam_flows_fwd, cam_flows_bwd, flows_fwd, flows_bwd)]
 
-    return exp_masks_target
+        ws = ws / 2.3
+        return ret
+
 
 def compute_joint_mask_for_depth(explainability_mask, rigidity_mask_bwd, rigidity_mask_fwd, THRESH):
     joint_masks = []
@@ -237,19 +242,20 @@ def compute_joint_mask_for_depth(explainability_mask, rigidity_mask_bwd, rigidit
 
     return joint_masks
 
+
+#修改过one_scale
 def consensus_depth_flow_mask(explainability_mask, census_mask_bwd, census_mask_fwd, exp_masks_bwd_target, exp_masks_fwd_target, THRESH, wbce):
     # Loop over each scale
-    assert(len(explainability_mask)==len(census_mask_bwd))
-    assert(len(explainability_mask)==len(census_mask_fwd))
-    loss = 0.
-    for i in range(len(explainability_mask)):
-        exp_mask_one_scale = explainability_mask[i]
-        census_mask_fwd_one_scale = (census_mask_fwd[i] < THRESH).type_as(exp_mask_one_scale).prod(dim=1, keepdim=True)
-        census_mask_bwd_one_scale = (census_mask_bwd[i] < THRESH).type_as(exp_mask_one_scale).prod(dim=1, keepdim=True)
+
+    def one_scale(explainability_mask, census_mask_bwd, census_mask_fwd, exp_masks_bwd_target, exp_masks_fwd_target, THRESH, wbce):
+    #for i in range(len(explainability_mask)):
+        exp_mask_one_scale = explainability_mask
+        census_mask_fwd_one_scale = (census_mask_fwd < THRESH).type_as(exp_mask_one_scale).prod(dim=1, keepdim=True)
+        census_mask_bwd_one_scale = (census_mask_bwd < THRESH).type_as(exp_mask_one_scale).prod(dim=1, keepdim=True)
 
         #Using the pixelwise consensus term
-        exp_fwd_target_one_scale = exp_masks_fwd_target[i]
-        exp_bwd_target_one_scale = exp_masks_bwd_target[i]
+        exp_fwd_target_one_scale = exp_masks_fwd_target
+        exp_bwd_target_one_scale = exp_masks_bwd_target
         census_mask_fwd_one_scale = logical_or(census_mask_fwd_one_scale, exp_fwd_target_one_scale)
         census_mask_bwd_one_scale = logical_or(census_mask_bwd_one_scale, exp_bwd_target_one_scale)
 
@@ -264,9 +270,19 @@ def consensus_depth_flow_mask(explainability_mask, census_mask_bwd, census_mask_
 
         rigidity_mask_combined = torch.cat((census_mask_bwd_one_scale, census_mask_bwd_one_scale,
                         census_mask_fwd_one_scale, census_mask_fwd_one_scale), dim=1)
-        loss += weighted_binary_cross_entropy(exp_mask_one_scale, rigidity_mask_combined.type_as(exp_mask_one_scale), [wbce, 1-wbce])
+        return weighted_binary_cross_entropy(exp_mask_one_scale, rigidity_mask_combined.type_as(exp_mask_one_scale), [wbce, 1-wbce])
 
-    return loss
+    assert (len(explainability_mask) == len(census_mask_bwd))
+    assert (len(explainability_mask) == len(census_mask_fwd))
+    loss = 0.
+
+    if type(explainability_mask) not in [tuple, list]:
+        return one_scale(explainability_mask, census_mask_bwd, census_mask_fwd, exp_masks_bwd_target, exp_masks_fwd_target, THRESH, wbce)
+    else:
+        for i in range(len(explainability_mask)):
+            loss+=one_scale(explainability_mask[i], census_mask_bwd[i], census_mask_fwd[i], exp_masks_bwd_target[i], exp_masks_fwd_target[i], THRESH, wbce)
+        return loss
+
 
 def weighted_binary_cross_entropy(output, target, weights=None):
     if weights is not None:
@@ -375,7 +391,7 @@ def flow_diff(gt, pred):
     _, _, h_pred, w_pred = pred.size()
     bs, nc, h_gt, w_gt = gt.size()
     u_gt, v_gt = gt[:,0,:,:], gt[:,1,:,:]
-    pred = nn.functional.upsample(pred, size=(h_gt, w_gt), mode='bilinear')
+    pred = nn.functional.interpolate(pred, size=(h_gt, w_gt), mode='bilinear')
     u_pred = pred[:,0,:,:] * (w_gt/w_pred)
     v_pred = pred[:,1,:,:] * (h_gt/h_pred)
 
@@ -389,7 +405,7 @@ def compute_epe(gt, pred):
     bs, nc, h_gt, w_gt = gt.size()
 
     u_gt, v_gt = gt[:,0,:,:], gt[:,1,:,:]
-    pred = nn.functional.upsample(pred, size=(h_gt, w_gt), mode='bilinear')
+    pred = nn.functional.interpolate(pred, size=(h_gt, w_gt), mode='bilinear')
     u_pred = pred[:,0,:,:] * (w_gt/w_pred)
     v_pred = pred[:,1,:,:] * (h_gt/h_pred)
 
@@ -410,7 +426,7 @@ def outlier_err(gt, pred, tau=[3,0.05]):
     _, _, h_pred, w_pred = pred.size()
     bs, nc, h_gt, w_gt = gt.size()
     u_gt, v_gt, valid_gt = gt[:,0,:,:], gt[:,1,:,:], gt[:,2,:,:]
-    pred = nn.functional.upsample(pred, size=(h_gt, w_gt), mode='bilinear')
+    pred = nn.functional.interpolate(pred, size=(h_gt, w_gt), mode='bilinear')
     u_pred = pred[:,0,:,:] * (w_gt/w_pred)
     v_pred = pred[:,1,:,:] * (h_gt/h_pred)
 
@@ -430,8 +446,8 @@ def outlier_err(gt, pred, tau=[3,0.05]):
 def compute_all_epes(gt, rigid_pred, non_rigid_pred, rigidity_mask, THRESH=0.5):
     _, _, h_pred, w_pred = rigid_pred.size()
     _, _, h_gt, w_gt = gt.size()
-    rigidity_pred_mask = nn.functional.upsample(rigidity_mask, size=(h_pred, w_pred), mode='bilinear')
-    rigidity_gt_mask = nn.functional.upsample(rigidity_mask, size=(h_gt, w_gt), mode='bilinear')
+    rigidity_pred_mask = nn.functional.interpolate(rigidity_mask, size=(h_pred, w_pred), mode='bilinear')
+    rigidity_gt_mask = nn.functional.interpolate(rigidity_mask, size=(h_gt, w_gt), mode='bilinear')
 
     non_rigid_pred = (rigidity_pred_mask<=THRESH).type_as(non_rigid_pred).expand_as(non_rigid_pred) * non_rigid_pred
     rigid_pred = (rigidity_pred_mask>THRESH).type_as(rigid_pred).expand_as(rigid_pred) * rigid_pred
