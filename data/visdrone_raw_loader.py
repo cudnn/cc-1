@@ -2,8 +2,7 @@
 import numpy as np
 from path import Path
 import scipy.misc
-from collections import Counter
-
+import os
 
 '''
     基本等于sequence—folders
@@ -78,7 +77,12 @@ class VisDroneRawLoader(object):
             if sample is None:
                 return []
             #scene_data['P_rect'] = self.get_P_rect(scene_data, sample[1], sample[2])
-            scene_data['intrinsics']  = np.genfromtxt(drive/'cam.txt', delimiter=' ')#分隔符空格
+            if(os.path.exists(drive/'cam.txt')==False):#内参矩阵先用kitti的，其实一样
+                scene_data['intrinsics']=np.array([241.674463,0.,204.168010,
+                                                   0.,246.284868,59.000832,
+                                                   0.,0.,1.])
+            else:
+                scene_data['intrinsics']  = np.genfromtxt(drive/'cam.txt', delimiter=',')#分隔符空格
 
             train_scenes.append(scene_data)
         return train_scenes

@@ -17,27 +17,31 @@ import torch.nn as nn
 import torch.utils.data
 import custom_transforms
 import models
+
 from utils import tensor2array, save_checkpoint, save_path_formatter
 from inverse_warp import inverse_warp, pose2flow, flow2oob, flow_warp
 
-from loss_functions import compute_joint_mask_for_depth,consensus_exp_masks
-from loss_functions import  consensus_depth_flow_mask
+from process_functions import compute_joint_mask_for_depth,consensus_exp_masks
+
+
 from loss_functions import\
     photometric_reconstruction_loss, \
     photometric_flow_loss,\
     explainability_loss, \
     gaussian_explainability_loss, \
     smooth_loss, \
-    edge_aware_smoothness_loss
+    edge_aware_smoothness_loss,\
+    consensus_depth_flow_mask
 
-from loss_functions import compute_errors, compute_epe, compute_all_epes, flow_diff, spatial_normalize
 
 from logger import TermLogger, AverageMeter
 from path import Path
 from itertools import chain
 from tensorboardX import SummaryWriter
 from flowutils.flowlib import flow_to_image
-from utils import flow2rgb
+
+
+from utils import flow2rgb,compute_all_epes,flow_diff,spatial_normalize
 
 @torch.no_grad()
 def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, logger, tb_writer,nb_writers,global_vars_dict = None):
@@ -111,7 +115,7 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
 
 
         #flow----
-
+        #制作前后一帧的
         if args.flownet == 'Back2Future':
             flow_fwd, flow_bwd, _ = flow_net(tgt_img, ref_imgs[1:3])
         elif args.flownet == 'FlowNetC6':
@@ -119,17 +123,18 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
             flow_bwd = flow_net(tgt_img, ref_imgs[1])
         #FLOW FWD [B,2,H,W]
         #flow cam :tensor[b,2,h,w]
-        flow_fwd = flow_fwd
-        flow_bwd = flow_bwd
-
+        #flow_background
         flow_cam = pose2flow(depth.squeeze(1), pose[:, 2], intrinsics, intrinsics_inv)
 
         flows_cam_fwd = pose2flow(depth.squeeze(1), pose[:, 2], intrinsics, intrinsics_inv)
         flows_cam_bwd = pose2flow(depth.squeeze(1), pose[:, 1], intrinsics, intrinsics_inv)
 
+
+
         exp_masks_target = consensus_exp_masks(flows_cam_fwd, flows_cam_bwd, flow_fwd, flow_bwd, tgt_img,
                                                ref_imgs[2], ref_imgs[1], wssim=args.wssim, wrig=args.wrig,
                                                ws=args.smooth_loss_weight)
+
         rigidity_mask_fwd = (flows_cam_fwd - flow_fwd).abs()
         rigidity_mask_bwd = (flows_cam_bwd - flow_bwd).abs()
 
@@ -179,42 +184,26 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
 
                 disp_to_show = disp[0].cpu()  # tensor disp_to_show :[1,h,w],0.5~3.1~10
                 tb_writer.add_image('Disp Output/sample{}'.format(i),
-                                    tensor2array(disp_to_show, max_value=None, colormap='magma'), 0)
+                                    tensor2array(disp_to_show, max_value=None, colormap='bone'), 0)
 
 
             else:
             #2.disp
                 disp_to_show = disp[0].cpu()# tensor disp_to_show :[1,h,w],0.5~3.1~10
-                tb_writer.add_image('Disp Output/disp sample{}'.format(i), tensor2array(disp_to_show, max_value=None,colormap='magma'), epoch)
+                tb_writer.add_image('Disp Output/sample{}'.format(i), tensor2array(disp_to_show, max_value=None,colormap='bone'), epoch)
             #3. flow
-                if i == args.show_samples[0]:
-                    tb_writer.add_image('Flow/Flow Output sample {}'.format(i), flow2rgb(flow_fwd[0], max_value=20),
-                                        epoch)
-                    tb_writer.add_image('Flow/cam_Flow Output sample {}'.format(i), flow2rgb(flow_cam[0], max_value=20),
-                                        epoch)
-
+                tb_writer.add_image('Flow/Flow Output sample {}'.format(i), flow2rgb(flow_fwd[0], max_value=6),epoch)
+                tb_writer.add_image('Flow/cam_Flow Output sample {}'.format(i), flow2rgb(flow_cam[0], max_value=6),epoch)
+                tb_writer.add_image('Flow/rigid_Flow Output sample {}'.format(i), flow2rgb(rigidity_mask_fwd[0], max_value=6),epoch)
+                tb_writer.add_image('Flow/rigidity_mask_fwd{}'.format(i),flow2rgb(rigidity_mask_fwd[0],max_value=6),epoch)
 
             #4. mask
-                if i == args.show_samples[0]:
-                    tb_writer.add_image('Mask Output/mask0 sample{}'.format(i),tensor2array(explainability_mask[0][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask1 sample{}'.format(i),tensor2array(explainability_mask[1][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask2 sample{}'.format(i),tensor2array(explainability_mask[2][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask3 sample{}'.format(i),tensor2array(explainability_mask[3][0], max_value=None, colormap='magma'), epoch)
-                elif i == args.show_samples[1]:
-                    tb_writer.add_image('Mask Output/mask0 sample{}'.format(i),tensor2array(explainability_mask[0][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask1 sample{}'.format(i),tensor2array(explainability_mask[1][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask2 sample{}'.format(i),tensor2array(explainability_mask[2][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask3 sample{}'.format(i),tensor2array(explainability_mask[3][0], max_value=None, colormap='magma'), epoch)
-                elif i == args.show_samples[2]:
-                    tb_writer.add_image('Mask Output/mask0 sample{}'.format(i),tensor2array(explainability_mask[0][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask1 sample{}'.format(i),tensor2array(explainability_mask[1][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask2 sample{}'.format(i),tensor2array(explainability_mask[2][0], max_value=None, colormap='magma'), epoch)
-                    tb_writer.add_image('Mask Output/mask3 sample{}'.format(i),tensor2array(explainability_mask[3][0], max_value=None, colormap='magma'), epoch)
+                tb_writer.add_image('Mask Output/mask0 sample{}'.format(i),tensor2array(explainability_mask[0][0], max_value=None, colormap='magma'), epoch)
+                tb_writer.add_image('Mask Output/mask1 sample{}'.format(i),tensor2array(explainability_mask[1][0], max_value=None, colormap='magma'), epoch)
+                tb_writer.add_image('Mask Output/mask2 sample{}'.format(i),tensor2array(explainability_mask[2][0], max_value=None, colormap='magma'), epoch)
+                tb_writer.add_image('Mask Output/mask3 sample{}'.format(i),tensor2array(explainability_mask[3][0], max_value=None, colormap='magma'), epoch)
 
-        #                depth_to_show[depth_to_show == 0] = 1000
- #               disp_to_show = (1 / depth_to_show).clamp(0, 10)
-  #              output_writers[index].add_image('val target Disparity Normalized',
-   #                                             tensor2array(disp_to_show, max_value=None, colormap='bone'), epoch)
+        #
 
 
             #output_writers[index].add_image('val Depth Output', tensor2array(depth.data[0].cpu(), max_value=10),

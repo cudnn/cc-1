@@ -16,20 +16,24 @@ import torch.nn as nn
 import torch.utils.data
 import custom_transforms
 import models
-from utils import tensor2array, save_checkpoint, save_path_formatter
 from inverse_warp import inverse_warp, pose2flow, flow_warp
 
-from loss_functions import compute_joint_mask_for_depth
-from loss_functions import consensus_exp_masks, consensus_depth_flow_mask
+from process_functions import \
+    consensus_exp_masks, \
+    compute_joint_mask_for_depth
+
+
 from loss_functions import\
     photometric_reconstruction_loss, \
     photometric_flow_loss,\
     explainability_loss, \
     gaussian_explainability_loss, \
     smooth_loss, \
+    consensus_depth_flow_mask,\
     edge_aware_smoothness_loss
 
-from loss_functions import compute_errors, compute_epe, compute_all_epes, flow_diff, spatial_normalize
+from utils import  spatial_normalize
+from utils import tensor2array, save_checkpoint, save_path_formatter
 
 from logger import TermLogger, AverageMeter
 from path import Path

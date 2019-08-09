@@ -9,7 +9,7 @@ from path import Path
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", metavar='DIR',
                    # help='path to original dataset',default='/home/roit/datasets/kitti_small/')
-                   help = 'path to original dataset', default = '/home/roit/datasets/VisDrone_raw/')
+                   help = 'path to original dataset', default = '/home/roit/datasets/VisDrone_prep_input/')
 
 parser.add_argument("--dataset-format", type=str, default='visdrone', choices=["kitti", "cityscapes","visdrone"])
 parser.add_argument("--static-frames", default=None,
@@ -31,7 +31,7 @@ def dump_example(scene):
     for scene_data in scene_list:
         dump_dir = args.dump_root/scene_data['rel_path']
         dump_dir.makedirs_p()
-        intrinsics = scene_data['intrinsics']
+        intrinsics = scene_data['intrinsics'].reshape(3,3)
         fx = intrinsics[0, 0]
         fy = intrinsics[1, 1]
         cx = intrinsics[0, 2]
@@ -41,7 +41,7 @@ def dump_example(scene):
         with open(dump_cam_file, 'w') as f:
             f.write('%f,0.,%f,0.,%f,%f,0.,0.,1.' % (fx, cx, fy, cy))
 
-        for sample in data_loader.get_scene_imgs(scene_data):#该函数是生成器, 使用yield返回而非return
+        for sample in data_loader.get_scene_imgs(scene_data=scene_data):#该函数是生成器, 使用yield返回而非return
             assert(len(sample) >= 2)#sample[0]:ndarray; sample[1]:str
             img, frame_nb = sample[0], sample[1]
             dump_img_file = dump_dir/'{}.jpg'.format(frame_nb)

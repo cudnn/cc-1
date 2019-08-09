@@ -348,3 +348,22 @@
  python3 /home/roit/aws/aprojects/cc/main.py
  python3 /home/roit/aws/aprojects/cc/main.py
  python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py
+ python3 /home/roit/aws/aprojects/cc/main.py

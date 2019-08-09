@@ -19,8 +19,6 @@ import models
 from utils import tensor2array, save_checkpoint, save_path_formatter
 from inverse_warp import inverse_warp, pose2flow, flow2oob, flow_warp
 
-from loss_functions import compute_joint_mask_for_depth
-from loss_functions import consensus_exp_masks, consensus_depth_flow_mask
 from loss_functions import\
     photometric_reconstruction_loss, \
     photometric_flow_loss,\
@@ -29,7 +27,6 @@ from loss_functions import\
     smooth_loss, \
     edge_aware_smoothness_loss
 
-from loss_functions import compute_errors, compute_epe, compute_all_epes, flow_diff, spatial_normalize
 
 from logger import TermLogger, AverageMeter
 from path import Path
@@ -126,8 +123,8 @@ parser.add_argument('--joint-mask-for-depth', dest='joint_mask_for_depth', actio
 
 parser.add_argument('--fix-masknet', dest='fix_masknet', action='store_true',default=False, help='do not train posenet')
 parser.add_argument('--fix-posenet', dest='fix_posenet', action='store_true',default=False, help='do not train posenet')
-parser.add_argument('--fix-flownet', dest='fix_flownet', action='store_true',default=True, help='do not train flownet')
-parser.add_argument('--fix-dispnet', dest='fix_dispnet', action='store_true', help='do not train dispnet')
+parser.add_argument('--fix-flownet', dest='fix_flownet', action='store_true',default=False, help='do not train flownet')
+parser.add_argument('--fix-dispnet', dest='fix_dispnet', action='store_true',default=False, help='do not train dispnet')
 
 parser.add_argument('--alternating', dest='alternating', action='store_true', help='minimize only one network at a time')
 parser.add_argument('--clamp-masks', dest='clamp_masks', action='store_true', help='threshold masks for training')
@@ -197,10 +194,6 @@ def main():
         args.alternating_flags = np.array([False,False,True])
     #mk writers
     tb_writer = SummaryWriter(args.save_path)
-    #output_writers = []
-    #if args.log_output:
-    #    for i in range(3):
-    #        output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
 # Data loading code
     flow_loader_h, flow_loader_w = 256, 832
@@ -504,9 +497,6 @@ def main():
             }, {
                 'epoch': epoch + 1,
                 'state_dict': flow_net.module.state_dict()
-            }, {
-                'epoch': epoch + 1,
-                'state_dict': optimizer.state_dict()
             },
             is_best)
 
