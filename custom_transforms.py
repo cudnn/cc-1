@@ -6,7 +6,7 @@ from scipy.misc import imresize, imrotate
 
 '''Set of tranform random routines that takes list of inputs as arguments,
 in order to have random but coherent transformations.'''
-
+##这里归一化等处理需要intrinsics, 虽然暂时不明白机制， 但是很直观
 
 class Compose(object):
     def __init__(self, transforms):
@@ -19,7 +19,7 @@ class Compose(object):
 
 
 class Normalize(object):
-    def __init__(self, mean, std):
+    def __init__(self, mean=None, std=None):
         self.mean = mean
         self.std = std
 
@@ -135,3 +135,10 @@ class Scale(object):
         scaled_images = [imresize(im, (scaled_h, scaled_w)) for im in images]
 
         return scaled_images, output_intrinsics
+
+class DepthTrans(object):
+
+    def __init__(self):
+        pass
+    def __call__(self, *args, **kwargs):
+        pass

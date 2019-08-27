@@ -11,13 +11,16 @@ def consensus_exp_masks(cam_flows_fwd, cam_flows_bwd, flows_fwd, flows_bwd, tgt_
     '''
     #by loss_5 called
 
-    :param cam_flows_fwd:
+    :param cam_flows_fwd:flow_dp
     :param cam_flows_bwd:
-    :param flows_fwd:
+
+    :param flows_fwd:flow_n
     :param flows_bwd:
+
     :param tgt_img:
     :param ref_img_fwd:
     :param ref_img_bwd:
+
     :param wssim:
     :param wrig:
     :param ws:
@@ -72,21 +75,38 @@ def consensus_exp_masks(cam_flows_fwd, cam_flows_bwd, flows_fwd, flows_bwd, tgt_
 
 #by train;validate called
 def compute_joint_mask_for_depth(explainability_mask, rigidity_mask_bwd, rigidity_mask_fwd, THRESH):
-    joint_masks = []
-    for i in range(len(explainability_mask)):
-        exp_mask_one_scale = explainability_mask[i]
-        rigidity_mask_fwd_one_scale = (rigidity_mask_fwd[i] > THRESH).type_as(exp_mask_one_scale)
-        rigidity_mask_bwd_one_scale = (rigidity_mask_bwd[i] > THRESH).type_as(exp_mask_one_scale)
-        exp_mask_one_scale_joint = 1 - (1-exp_mask_one_scale[:,1])*(1-exp_mask_one_scale[:,2]).unsqueeze(1) > 0.5
-        joint_mask_one_scale_fwd = logical_or(rigidity_mask_fwd_one_scale.type_as(exp_mask_one_scale), exp_mask_one_scale_joint.type_as(exp_mask_one_scale))
-        joint_mask_one_scale_bwd = logical_or(rigidity_mask_bwd_one_scale.type_as(exp_mask_one_scale), exp_mask_one_scale_joint.type_as(exp_mask_one_scale))
+    '''
+        不清楚，老是在logic_or哪里报错
+    :param explainability_mask:tensor:[b,4,h,w] 4,是???
+    :param rigidity_mask_bwd:
+    :param rigidity_mask_fwd:
+    :param THRESH:
+    :return:
+    '''
+    def one_scale(explainability_mask, rigidity_mask_bwd, rigidity_mask_fwd, THRESH):
+        rigidity_mask_fwd_one_scale = (rigidity_mask_fwd > THRESH).type_as(explainability_mask)
+        rigidity_mask_bwd_one_scale = (rigidity_mask_bwd > THRESH).type_as(explainability_mask)
+        exp_mask_one_scale_joint = 1 - (1 - explainability_mask[:, 1]) * (1 - explainability_mask[:, 2]).unsqueeze(
+            1) > 0.5
+        joint_mask_one_scale_fwd = logical_or(rigidity_mask_fwd_one_scale.type_as(explainability_mask),
+                                              exp_mask_one_scale_joint.type_as(explainability_mask))
+        joint_mask_one_scale_bwd = logical_or(rigidity_mask_bwd_one_scale.type_as(explainability_mask),
+                                              exp_mask_one_scale_joint.type_as(explainability_mask))
+
         joint_mask_one_scale_fwd = Variable(joint_mask_one_scale_fwd.data, requires_grad=False)
         joint_mask_one_scale_bwd = Variable(joint_mask_one_scale_bwd.data, requires_grad=False)
-        joint_mask_one_scale = torch.cat((joint_mask_one_scale_bwd, joint_mask_one_scale_bwd,
-                        joint_mask_one_scale_fwd, joint_mask_one_scale_fwd), dim=1)
-        joint_masks.append(joint_mask_one_scale)
+        joint_mask_one_scale = torch.cat(
+            (joint_mask_one_scale_bwd, joint_mask_one_scale_bwd, joint_mask_one_scale_fwd, joint_mask_one_scale_fwd),
+            dim=1)
+        return joint_mask_one_scale
 
-    return joint_masks
+    assert(len(explainability_mask)==len(rigidity_mask_fwd)==len(rigidity_mask_bwd))
+
+    if type(explainability_mask) not in [tuple,list]:
+        return one_scale(explainability_mask,rigidity_mask_bwd,rigidity_mask_fwd,THRESH)
+    else:
+        return [one_scale(explainability_mask_i,rigidity_mask_bwd_i,rigidity_mask_fwd_i,THRESH)
+                for explainability_mask_i, rigidity_mask_bwd_i, rigidity_mask_fwd_i in zip(explainability_mask,rigidity_mask_bwd,rigidity_mask_fwd)]
 
 
 

@@ -10,9 +10,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", metavar='DIR',
                    # help='path to original dataset',default='/home/roit/datasets/kitti_small/')
                    #help = 'path to original dataset', default = '/home/roit/datasets/VisDrone_prep_input')
-                   help = 'path to original dataset', default = '/home/roit/datasets/kitti')
+                   help = 'path to original dataset', default = '/home/roit/datasets/MC')
 
-parser.add_argument("--dataset-format", type=str, default='kitti', choices=["kitti", "cityscapes","visdrone",'minecraft'])
+parser.add_argument("--dataset-format", type=str, default='minecraft', choices=["kitti", "cityscapes","visdrone",'minecraft'])
 parser.add_argument("--static-frames", default=None,
                     help="list of imgs to discard for being static, if not set will discard them based on speed \
                     (careful, on KITTI some frames have incorrect speed)")
@@ -20,7 +20,7 @@ parser.add_argument("--with-gt", action='store_true',default=True,
                     help="If available (e.g. with KITTI), will store ground truth along with images, for validation")
 parser.add_argument("--height", type=int, default=256, help="image height")
 #parser.add_argument("--dump-root", type=str, default='/home/roit/datasets/kitti_256512', help="Where to dump the data")
-parser.add_argument("--dump-root", default=None, help="Where to dump the data")
+parser.add_argument("--dump-root", type=str, default=None, help="Where to dump the data")
 
 parser.add_argument("--width", type=int, default=512, help="image width")
 parser.add_argument("--num-threads", type=int, default=4, help="number of threads to use")
@@ -28,33 +28,57 @@ parser.add_argument("--num-threads", type=int, default=4, help="number of thread
 args = parser.parse_args()
 
 
-def dump_example(scene):
+def dump_example(scene_path):
+    '''
+    生成处理后数据文件
+    :param scene:
+    :return:
+    '''
     global data_loader
-    scene_list = data_loader.collect_scenes(scene)#scene:path scene_ilst a list of scenes, 每个scene是不同镜头下投影的同一个场景
-    for scene_data in scene_list:
-        dump_dir = args.dump_root/scene_data['rel_path']
-        dump_dir.makedirs_p()
-        intrinsics = scene_data['intrinsics'].reshape(3,3)
-        fx = intrinsics[0, 0]
-        fy = intrinsics[1, 1]
-        cx = intrinsics[0, 2]
-        cy = intrinsics[1, 2]
+    scene_data = data_loader.collect_scenes(scene_path)
 
-        dump_cam_file = dump_dir/'cam.txt'
-        with open(dump_cam_file, 'w') as f:
-            f.write('%f,0.,%f,0.,%f,%f,0.,0.,1.' % (fx, cx, fy, cy))
+    #abs path
+    dump_dir = args.dump_root/scene_data['rel_path']
 
-        for sample in data_loader.get_scene_imgs(scene_data=scene_data):#该函数是生成器, 使用yield返回而非return
-            assert(len(sample) >= 2)#sample[0]:ndarray; sample[1]:str
-            img, frame_nb = sample[0], sample[1]
-            dump_img_file = dump_dir/'{}.jpg'.format(frame_nb)
-            scipy.misc.imsave(dump_img_file, img)
-            if len(sample) == 3:
-                dump_depth_file = dump_dir/'{}.npy'.format(frame_nb)
-                np.save(dump_depth_file, sample[2])
+    dump_imgs = dump_dir/'imgs'
+    dump_depths = dump_dir / 'depths'
 
-        if len(dump_dir.files('*.jpg')) < 3:
-            dump_dir.rmtree()
+    dump_dir.makedirs_p()
+    dump_imgs.makedirs_p()
+    dump_depths.makedirs_p()
+
+    #inc
+    intrinsics = scene_data['intrinsics'].reshape(3,3)
+    fx = intrinsics[0, 0]
+    fy = intrinsics[1, 1]
+    cx = intrinsics[0, 2]
+    cy = intrinsics[1, 2]
+
+    #camfile
+    dump_cam_file = dump_dir/'cam.txt'
+    with open(dump_cam_file, 'w') as f:
+        f.write('%f,0.,%f,0.,%f,%f,0.,0.,1.' % (fx, cx, fy, cy))
+
+    #imgs and depth
+    for sample in data_loader.get_scene_imgs(scene_data=scene_data):#该函数是生成器, 使用yield返回而非return
+
+        dump_img_file = dump_imgs/'{}.jpg'.format(sample['f_name'])
+
+        scipy.misc.imsave(dump_img_file, sample['imgs'])
+
+        if data_loader.gt_depth:
+            dump_depth_file = dump_depths/'{}.npy'.format(sample['f_name'])
+            np.save(dump_depth_file, sample['depth'])
+        '''
+        if sample['pose']:
+            pass
+        if sample['flow']:
+            pass
+        
+        '''
+
+    if len(dump_imgs.files('*.jpg')) < 3:
+        dump_imgs.rmtree()
 
 
 def main():
@@ -67,19 +91,6 @@ def main():
 
     global data_loader
 
-    if args.dataset_format == 'kitti':
-        from kitti_raw_loader import KittiRawLoader
-        data_loader = KittiRawLoader(args.dataset_dir,
-                                     static_frames_file=args.static_frames,
-                                     img_height=args.height,
-                                     img_width=args.width,
-                                     get_gt=args.with_gt)
-
-    if args.dataset_format == 'cityscapes':
-        from cityscapes_loader import cityscapes_loader
-        data_loader = cityscapes_loader(args.dataset_dir,
-                                        img_height=args.height,
-                                        img_width=args.width)
 
     if args.dataset_format == 'visdrone':
         from  visdrone_raw_loader import VisDroneRawLoader
@@ -95,14 +106,64 @@ def main():
                                         img_height=args.height,
                                         img_width=args.width,
                                         gt_depth=args.with_gt)
-        pass
 
 
     print('Retrieving frames')#joblib.delayed
-    #Parallel(n_jobs=args.num_threads)(delayed(dump_example)(scene) for scene in tqdm(data_loader.scenes))
-    for scene in data_loader.scenes:
-        dump_example(scene)
 
+
+    #Parallel(n_jobs=args.num_threads)(delayed(dump_example)(scene) for scene in tqdm(data_loader.scenes))
+    totally_imgs = 0
+    for scene_path in tqdm(data_loader.scenes):
+        #dump_example(scene_path)
+        scene_data = data_loader.collect_scenes(scene_path)
+
+        # abs path
+        dump_dir = args.dump_root / scene_data['rel_path']
+
+        dump_imgs = dump_dir / 'imgs'
+        dump_depths = dump_dir / 'depths'
+
+        dump_dir.makedirs_p()
+        dump_imgs.makedirs_p()
+        dump_depths.makedirs_p()
+
+        # inc
+        intrinsics = scene_data['intrinsics'].reshape(3, 3)
+        fx = intrinsics[0, 0]
+        fy = intrinsics[1, 1]
+        cx = intrinsics[0, 2]
+        cy = intrinsics[1, 2]
+
+        # camfile
+        dump_cam_file = dump_dir / 'cam.txt'
+        with open(dump_cam_file, 'w') as f:
+            f.write('%f,0.,%f,0.,%f,%f,0.,0.,1.' % (fx, cx, fy, cy))
+
+        # imgs and depth
+        for sample in data_loader.get_scene_imgs(scene_data=scene_data):  # 该函数是生成器, 使用yield返回而非return
+
+            dump_img_file = dump_imgs / '{}.jpg'.format(sample['f_name'])
+
+            scipy.misc.imsave(dump_img_file, sample['imgs'])
+
+            if data_loader.gt_depth:
+                dump_depth_file = dump_depths / '{}.npy'.format(sample['f_name'])
+                np.save(dump_depth_file, sample['depth'])
+            '''
+            if sample['pose']:
+                pass
+            if sample['flow']:
+                pass
+
+            '''
+
+        if len(dump_imgs.files('*.jpg')) < 3:
+            dump_imgs.rmtree()
+
+        totally_imgs+=scene_data['nums_frame']
+    #end for
+
+    print('get {} scences and totally {} imgs'.format(len(data_loader.scenes), totally_imgs))
 
     # Split into train/val
     print('Generating train val lists')

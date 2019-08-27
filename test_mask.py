@@ -19,7 +19,7 @@ from PIL import Image
 from torchvision.transforms import ToPILImage
 from flowutils.flowlib import flow_to_image
 from utils import tensor2array
-from loss_functions import compute_all_epes
+from utils import compute_all_epes
 from scipy.ndimage.interpolation import zoom
 
 parser = argparse.ArgumentParser(description='Test IOU of Mask predictions',

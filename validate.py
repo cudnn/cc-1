@@ -5,7 +5,7 @@ import time
 import csv
 import datetime
 import os
-
+import copy
 import  matplotlib.pyplot as plt
 
 import numpy as np
@@ -42,13 +42,16 @@ from flowutils.flowlib import flow_to_image
 
 
 from utils import flow2rgb,compute_all_epes,flow_diff,spatial_normalize
-
 @torch.no_grad()
 def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, logger, tb_writer,nb_writers,global_vars_dict = None):
 #data prepared
     device = global_vars_dict['device']
     n_iter_val = global_vars_dict['n_iter_val']
     args = global_vars_dict['args']
+    show_samples = copy.deepcopy(args.show_samples)
+    for i in range(len(show_samples)):
+        show_samples[i]*=len(val_loader)
+        show_samples[i] = show_samples[i]//1
 
 
     batch_time = AverageMeter()
@@ -90,27 +93,7 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
         pose = pose_net(tgt_img, ref_imgs)
 
 
-        #mask
-        # 4.explainability_mask(none)
-        explainability_mask = mask_net(tgt_img, ref_imgs)  # 有效区域?4??
 
-
-        #list(5):item:tensor:[4,4,128,512]...[4,4,4,16] value:[0.33~0.48~0.63]
-
-        if args.joint_mask_for_depth:#false
-            explainability_mask_for_depth = compute_joint_mask_for_depth(explainability_mask, rigidity_mask_bwd,
-                                                                         rigidity_mask_fwd)
-        else:
-            explainability_mask_for_depth = explainability_mask
-
-        #chage
-
-        if args.no_non_rigid_mask:
-            flow_exp_mask = None
-            if args.DEBUG:
-                print('Using no masks for flow')
-        else:
-            flow_exp_mask = 1 - explainability_mask[:,1:3]
 
 
 
@@ -121,9 +104,6 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
         elif args.flownet == 'FlowNetC6':
             flow_fwd = flow_net(tgt_img, ref_imgs[2])
             flow_bwd = flow_net(tgt_img, ref_imgs[1])
-        #FLOW FWD [B,2,H,W]
-        #flow cam :tensor[b,2,h,w]
-        #flow_background
         flow_cam = pose2flow(depth.squeeze(1), pose[:, 2], intrinsics, intrinsics_inv)
 
         flows_cam_fwd = pose2flow(depth.squeeze(1), pose[:, 2], intrinsics, intrinsics_inv)
@@ -134,14 +114,42 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
         exp_masks_target = consensus_exp_masks(flows_cam_fwd, flows_cam_bwd, flow_fwd, flow_bwd, tgt_img,
                                                ref_imgs[2], ref_imgs[1], wssim=args.wssim, wrig=args.wrig,
                                                ws=args.smooth_loss_weight)
+        no_rigid_flow = flow_fwd - flows_cam_fwd
 
-        rigidity_mask_fwd = (flows_cam_fwd - flow_fwd).abs()
+        rigidity_mask_fwd = (flows_cam_fwd - flow_fwd).abs()#[b,2,h,w]
         rigidity_mask_bwd = (flows_cam_bwd - flow_bwd).abs()
 
+        # mask
+        # 4.explainability_mask(none)
+        explainability_mask = mask_net(tgt_img, ref_imgs)  # 有效区域?4??
+
+        # list(5):item:tensor:[4,4,128,512]...[4,4,4,16] value:[0.33~0.48~0.63]
+
+        if args.joint_mask_for_depth:  # false
+            explainability_mask_for_depth = explainability_mask
+
+            #explainability_mask_for_depth = compute_joint_mask_for_depth(explainability_mask, rigidity_mask_bwd,
+             #                                                            rigidity_mask_fwd,THRESH=args.THRESH)
+        else:
+            explainability_mask_for_depth = explainability_mask
+
+        # chage
+
+        if args.no_non_rigid_mask:
+            flow_exp_mask = None
+            if args.DEBUG:
+                print('Using no masks for flow')
+        else:
+            flow_exp_mask = 1 - explainability_mask[:, 1:3]
+
+
         #3.2loss-compute
-        loss_1 = loss_camera(tgt_img, ref_imgs, intrinsics, intrinsics_inv,
+        if w1 >0:
+            loss_1 = loss_camera(tgt_img, ref_imgs, intrinsics, intrinsics_inv,
                              depth, explainability_mask_for_depth, pose, lambda_oob=args.lambda_oob, qch=args.qch,
                              wssim=args.wssim)
+        else:
+            loss_1 = torch.tensor([0.]).to(device)
 
         # E_M
         if w2 > 0:
@@ -150,14 +158,20 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
             loss_2 = 0
 
         #if args.smoothness_type == "regular":
-        loss_3 = smooth_loss(depth) + smooth_loss(explainability_mask)+smooth_loss(flow_fwd) + smooth_loss(flow_bwd)
-
-
-        loss_4 = loss_flow(tgt_img, ref_imgs[1:3], [flow_bwd, flow_fwd], flow_exp_mask,
+        if w3>0:
+            loss_3 = smooth_loss(depth) + smooth_loss(explainability_mask)+smooth_loss(flow_fwd) + smooth_loss(flow_bwd)
+        else:
+            loss_3 = torch.tensor([0.]).to(device)
+        if w4>0:
+            loss_4 = loss_flow(tgt_img, ref_imgs[1:3], [flow_bwd, flow_fwd], flow_exp_mask,
                            lambda_oob=args.lambda_oob, qch=args.qch, wssim=args.wssim)
-
-        loss_5 = consensus_depth_flow_mask(explainability_mask, rigidity_mask_bwd, rigidity_mask_fwd,
+        else:
+            loss_4 = torch.tensor([0.]).to(device)
+        if w5>0:
+            loss_5 = consensus_depth_flow_mask(explainability_mask, rigidity_mask_bwd, rigidity_mask_fwd,
                                            exp_masks_target, exp_masks_target, THRESH=args.THRESH, wbce=args.wbce)
+        else:
+            loss_5 = torch.tensor([0.]).to(device)
 
 
         loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3+ w4 * loss_4 + w5 * loss_5
@@ -172,7 +186,7 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
     #3.4 check log
 
         #查看forward pass效果
-        if args.img_freq >0 and i in args.show_samples:#output_writers list(3)
+        if args.img_freq >0 and i in show_samples:#output_writers list(3)
             if epoch == 0:#训练前的validate,目的在于先评估下网络效果
                 #1.img
                 # 不会执行第二次,注意ref_imgs axis0是batch的索引; axis 1是list(adjacent frame)的索引!
@@ -194,14 +208,18 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
             #3. flow
                 tb_writer.add_image('Flow/Flow Output sample {}'.format(i), flow2rgb(flow_fwd[0], max_value=6),epoch)
                 tb_writer.add_image('Flow/cam_Flow Output sample {}'.format(i), flow2rgb(flow_cam[0], max_value=6),epoch)
-                tb_writer.add_image('Flow/rigid_Flow Output sample {}'.format(i), flow2rgb(rigidity_mask_fwd[0], max_value=6),epoch)
+                tb_writer.add_image('Flow/no rigid flow Output sample {}'.format(i), flow2rgb(no_rigid_flow[0], max_value=6),epoch)
                 tb_writer.add_image('Flow/rigidity_mask_fwd{}'.format(i),flow2rgb(rigidity_mask_fwd[0],max_value=6),epoch)
 
             #4. mask
                 tb_writer.add_image('Mask Output/mask0 sample{}'.format(i),tensor2array(explainability_mask[0][0], max_value=None, colormap='magma'), epoch)
-                tb_writer.add_image('Mask Output/mask1 sample{}'.format(i),tensor2array(explainability_mask[1][0], max_value=None, colormap='magma'), epoch)
-                tb_writer.add_image('Mask Output/mask2 sample{}'.format(i),tensor2array(explainability_mask[2][0], max_value=None, colormap='magma'), epoch)
-                tb_writer.add_image('Mask Output/mask3 sample{}'.format(i),tensor2array(explainability_mask[3][0], max_value=None, colormap='magma'), epoch)
+                #tb_writer.add_image('Mask Output/mask1 sample{}'.format(i),tensor2array(explainability_mask[1][0], max_value=None, colormap='magma'), epoch)
+                #tb_writer.add_image('Mask Output/mask2 sample{}'.format(i),tensor2array(explainability_mask[2][0], max_value=None, colormap='magma'), epoch)
+                #tb_writer.add_image('Mask Output/mask3 sample{}'.format(i),tensor2array(explainability_mask[3][0], max_value=None, colormap='magma'), epoch)
+                tb_writer.add_image('Mask Output/exp_masks_target sample{}'.format(i),
+                                tensor2array(exp_masks_target[0][0], max_value=None, colormap='magma'), epoch)
+                #tb_writer.add_image('Mask Output/mask0 sample{}'.format(i),
+                #            tensor2array(explainability_mask[0][0], max_value=None, colormap='magma'), epoch)
 
         #
 
@@ -212,12 +230,12 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
         # errors.update(compute_errors(depth, output_depth.data.squeeze(1)))
         # add scalar
         if args.scalar_freq > 0 and n_iter_val % args.scalar_freq == 0:
-            tb_writer.add_scalar('val/cam_photometric_error', loss_1.item(), n_iter_val)
+            tb_writer.add_scalar('val/E_R', loss_1.item(), n_iter_val)
             if w2 > 0:
-                tb_writer.add_scalar('val/explanability_loss', loss_2.item(), n_iter_val)
-            tb_writer.add_scalar('val/disparity_smoothness_loss', loss_3.item(), n_iter_val)
-            tb_writer.add_scalar('val/flow_photometric_error', loss_4.item(), n_iter_val)
-            tb_writer.add_scalar('val/consensus_error', loss_5.item(), n_iter_val)
+                tb_writer.add_scalar('val/E_M', loss_2.item(), n_iter_val)
+            tb_writer.add_scalar('val/E_S', loss_3.item(), n_iter_val)
+            tb_writer.add_scalar('val/E_F', loss_4.item(), n_iter_val)
+            tb_writer.add_scalar('val/E_C', loss_5.item(), n_iter_val)
             tb_writer.add_scalar('val/total_loss', loss.item(), n_iter_val)
 
         # terminal output
@@ -232,9 +250,7 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
     global_vars_dict['n_iter_val'] = n_iter_val
     return losses.avg[0]#epoch validate loss
 
-@torch.no_grad()
-def validate_with_gt(val_loader,disp_net,pose_net,mask_net,  epoch, logger, output_writers,nb_writers,global_vars_dict = None):
-    return 0,0
+
 
 
 
@@ -443,3 +459,7 @@ def validate_flow_with_gt(val_loader, disp_net, pose_net, mask_net, flow_net, ep
 
     return errors.avg, error_names
 
+def validate_pose_with_gt():
+    pass
+def validate_seg_with_gt():
+    pass

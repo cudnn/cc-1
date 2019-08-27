@@ -1,4 +1,4 @@
-#魔改版 分离版本 with train.py validate.py
+#更改 可以使用gt来train or validate
 import argparse
 import time
 import csv
@@ -34,15 +34,15 @@ from itertools import chain
 from tensorboardX import SummaryWriter
 from flowutils.flowlib import flow_to_image
 from train import  train
-from validate import validate_without_gt,validate_with_gt
+from validate import validate_without_gt
 
 epsilon = 1e-8
 
 parser = argparse.ArgumentParser(description='Competitive Collaboration training on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--data', metavar='DIR',default='/home/roit/datasets/VisDrone_prep_input256512/',
+parser.add_argument('--data', metavar='DIR',default='/home/roit/datasets/MC_256512/',
                     help='path to dataset')
-parser.add_argument('--kitti-dir', dest='kitti_dir', type=str, default='/home/roit/datasets/kitti_flow/',
+parser.add_argument('--kitti-dir', dest='kitti_dir', type=str, default='/home/roit/datasets/MC_256512/',
                     help='Path to kitti2015 scene flow dataset for optical flow validation')
 parser.add_argument('--name', type=str, default='visdrone_raw_256512',
                     help='name of the experiment, checpoints are stored in checpoints/name')
@@ -51,9 +51,7 @@ parser.add_argument('--name', type=str, default='visdrone_raw_256512',
 
 parser.add_argument('--DEBUG', action='store_true', help='DEBUG Mode')
 
-parser.add_argument('--dataset-format', default='sequential', metavar='STR',
-                    help='dataset format, stacked: stacked frames (from original TensorFlow code) \
-                    sequential: sequential folders (easier to convert to with a non KITTI/Cityscape dataset')
+
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=5)
 parser.add_argument('--rotation-mode', type=str, choices=['euler', 'quat'], default='euler',
                     help='rotation mode for PoseExpnet : euler (yaw,pitch,roll) or quaternion (last 3 coefficients)')
@@ -63,13 +61,6 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
                          ' border will only null gradients of the coordinate outside (x or y)')
 
 
-parser.add_argument('--with-depth-gt', action='store_true',default=False, help='use ground truth for depth validation. \
-                    You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
-parser.add_argument('--with-flow-gt', action='store_true', default=False,help='use ground truth for flow validation. \
-                    see data/validation_flow for an example')
-parser.add_argument('--without-gt', action='store_true', default=True,help='use ground truth for flow validation. \
-                    see data/validation_flow for an example')
-parser.add_argument('--with-gt', action='store_true', default=False,help='no gt ')
 
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers')
@@ -139,13 +130,15 @@ parser.add_argument('-wrig', '--wrig', type=float, help='consensus imbalance wei
 parser.add_argument('-wbce', '--wbce', type=float, help='weight for binary cross entropy loss', metavar='W', default=0.5)
 parser.add_argument('-wssim', '--wssim', type=float, help='weight for ssim loss', metavar='W', default=0.0)
 
+
+#loss weights
 parser.add_argument('-pc', '--cam-photo-loss-weight', default=1,type=float, help='weight for camera photometric loss for rigid pixels', metavar='W')
 parser.add_argument('-pf', '--flow-photo-loss-weight', default=1, type=float, help='weight for photometric loss for non rigid optical flow', metavar='W')
 parser.add_argument('-m', '--mask-loss-weight',  default=0.1,type=float, help='weight for explainabilty mask loss', metavar='W')
 parser.add_argument('-s', '--smooth-loss-weight', default=0.1,type=float, help='weight for disparity smoothness loss', metavar='W')
 parser.add_argument('-c', '--consensus-loss-weight', default=0.1, type=float, help='weight for mask consistancy', metavar='W')
 
-
+#hyper parameters
 parser.add_argument('--THRESH', '--THRESH', type=float, help='threshold for masks', metavar='W', default=0.01)
 parser.add_argument('--lambda-oob', type=float, help='weight on the out of bound pixels', default=0)
 parser.add_argument('--log-output', action='store_true',default=True, help='will log dispnet outputs and warped imgs at validation step')
@@ -163,6 +156,28 @@ parser.add_argument('--scalar-freq', default=10, type=int,
 parser.add_argument('--img-freq', default=10, type=int,
                     metavar='N', help='add_image frequency')
 parser.add_argument('--show-samples', default=[0,0.5,0.99], help='choose three samples to show out the trainning process')
+
+
+# what with what
+
+parser.add_argument('--dataset-format', default='sequential_with_gt',choices=['sequential_with_gt','sequential','stacked'], metavar='STR',help='dataset format, stacked: stacked frames (from original TensorFlow code)sequential: sequential folders (easier to convert to with a non KITTI/Cityscape dataset')
+
+
+parser.add_argument('--train-with-depth-gt', default=False)#for mc
+parser.add_argument('--train-with-flow-gt', default=False)#for mc
+
+parser.add_argument('--val-with-depth-gt', action='store_true',default=False, help='use ground truth for depth validation. \
+                    You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
+parser.add_argument('--val-with-flow-gt', action='store_true', default=False,help='use ground truth for flow validation. \
+                    see data/validation_flow for an example')
+
+parser.add_argument('--without-gt', action='store_true', default=True,help='use ground truth for flow validation. \
+                    see data/validation_flow for an example')
+parser.add_argument('--with-gt', action='store_true', default=False,help='no gt ')
+
+
+
+
 #global args
 args = parser.parse_args()
 n_iter = 0
@@ -182,11 +197,8 @@ def main():
     args = global_vars_dict['args']
     best_error = -1#best model choosing
 
-    #import
-    if args.dataset_format == 'stacked':
-        from datasets.stacked_sequence_folders import SequenceFolder
-    elif args.dataset_format == 'sequential':
-        from datasets.sequence_folders import SequenceFolder
+
+
     #mkdir
     timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
     args.save_path = Path('checkpoints')/args.name/timestamp
@@ -230,17 +242,36 @@ def main():
 
     print("=> fetching scenes in '{}'".format(args.data))
 
-    train_set = SequenceFolder(
-        args.data,
-        transform=train_transform,
-        seed=args.seed,
-        train=True,
-        sequence_length=args.sequence_length,#5
-        target_transform = None
-    )
+
+
+    #train set, 建立一个
+    if args.dataset_format == 'stacked':
+        from datasets.stacked_sequence_folders import SequenceFolder
+    elif args.dataset_format == 'sequential':
+        from datasets.sequence_folders import SequenceFolder
+        train_set = SequenceFolder(#mc data folder
+            args.data,
+            transform=train_transform,
+            seed=args.seed,
+            train=True,
+            sequence_length=args.sequence_length,#5
+            target_transform = None
+        )
+    elif args.dataset_format == 'sequential_with_gt':  # with all possible gt
+        from datasets.sequence_mc import SequenceFolder
+        train_set = SequenceFolder(  # mc data folder
+            args.data,
+            transform=train_transform,
+            seed=args.seed,
+            train=True,
+            sequence_length=args.sequence_length,  # 5
+            target_transform=None
+        )
+
+    #val set, 挨个建立
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
-    if args.with_depth_gt:
+    if args.val_with_depth_gt:
         from datasets.validation_folders import ValidationSet
         val_set = ValidationSet(
             args.data.replace('cityscapes', 'kitti'),
@@ -256,7 +287,7 @@ def main():
             target_transform=None
         )
 
-    if args.with_flow_gt:
+    if args.val_with_flow_gt:
         from datasets.validation_flow import ValidationFlow
         val_flow_set = ValidationFlow(root=args.kitti_dir,
                                         sequence_length=args.sequence_length,
@@ -438,7 +469,7 @@ def main():
            val_loss = validate_without_gt(val_loader,disp_net,pose_net,mask_net,flow_net, epoch, logger, tb_writer,nb_writers=3,global_vars_dict=global_vars_dict)
 
 
-        if args.with_flow_gt:
+        if args.val_with_flow_gt:
             flow_errors, flow_error_names = validate_flow_with_gt(val_flow_loader, disp_net, pose_net, mask_net, flow_net, epoch, logger, tb_writer)
 
             for error, name in zip(flow_errors, flow_error_names):

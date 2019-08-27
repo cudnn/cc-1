@@ -41,7 +41,8 @@ COLORMAPS = {'rainbow': opencv_rainbow(),
              'bone': cm.get_cmap('bone', 10000)}
 
 
-def tensor2array(tensor, max_value=None, colormap='rainbow'):
+
+def tensor2array(tensor, max_value=None, colormap='rainbow',out_shape = 'CHW'):
     tensor = tensor.detach().cpu()
     if max_value is None:
         max_value = tensor.max().item()
@@ -57,7 +58,10 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
         elif (tensor.size(0) == 2):
             array = tensor.numpy()
 
+    if out_shape == 'HWC':
+        array = array.transpose(1,2,0)
     return array
+
 
 def save_checkpoint(save_path, dispnet_state, posenet_state, masknet_state, flownet_state,is_best, filename='checkpoint.pth.tar'):
     file_prefixes = ['dispnet', 'posenet', 'masknet', 'flownet']

@@ -2,7 +2,7 @@ import numpy as np
 from path import Path
 import scipy.misc
 from collections import Counter
-
+import matplotlib.pyplot as plt
 
 class KittiRawLoader(object):
     def __init__(self,
@@ -137,6 +137,7 @@ class KittiRawLoader(object):
                         pass
         return data
 
+    #called by get_scene_imgs
     def generate_depth_map(self, scene_data, tgt_idx):
         # compute projection matrix velodyne->image plane
 

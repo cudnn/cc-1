@@ -11,12 +11,69 @@ from ssim import ssim
 from process_functions import depth_occlusion_masks,occlusion_masks
 
 from utils import robust_l1,logical_or,weighted_binary_cross_entropy
+from utils import tensor2array
 
-
-
+import matplotlib.pyplot as plt
 
 #loss1 E_R recunstruction loss
 def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics, intrinsics_inv, depth, explainability_mask, pose, rotation_mode='euler', padding_mode='zeros', lambda_oob=0, qch=0.5, wssim=0.5):
+    def one_scale(depth, explainability_mask, occ_masks):
+        assert(explainability_mask is None or depth.size()[2:] == explainability_mask.size()[2:])
+        assert(pose.size(1) == len(ref_imgs))
+
+        reconstruction_loss = 0
+        b, _, h, w = depth.size()
+        downscale = tgt_img.size(2)/h
+
+        tgt_img_scaled = nn.functional.adaptive_avg_pool2d(tgt_img, (h, w))
+        ref_imgs_scaled = [nn.functional.adaptive_avg_pool2d(ref_img, (h, w)) for ref_img in ref_imgs]
+        intrinsics_scaled = torch.cat((intrinsics[:, 0:2]/downscale, intrinsics[:, 2:]), dim=1)
+        intrinsics_scaled_inv = torch.cat((intrinsics_inv[:, :, 0:2]*downscale, intrinsics_inv[:, :, 2:]), dim=2)
+
+        weight = 1.
+        #
+        for i, ref_img in enumerate(ref_imgs_scaled):#ref_imgs_scaled: list with 4 items( ref dimention)
+            current_pose = pose[:, i]
+
+            ref_img_warped = inverse_warp(ref_img, depth[:,0], current_pose, intrinsics_scaled, intrinsics_scaled_inv, rotation_mode, padding_mode)
+
+            valid_pixels = 1 - (ref_img_warped == 0).prod(1, keepdim=True).type_as(ref_img_warped)#[4,1,h,w]
+
+            diff = (tgt_img_scaled - ref_img_warped) * valid_pixels#[4,3,h,w]
+
+            ssim_loss = 1 - ssim(tgt_img_scaled, ref_img_warped) * valid_pixels#ssim(a,b)返回同样shape的c,按元素，越相似越接近1， 否则最低为0
+
+            oob_normalization_const = valid_pixels.nelement()/valid_pixels.sum()#avg, 根据monodepth改成min??
+
+            assert((oob_normalization_const == oob_normalization_const).item() == 1)
+
+
+            if explainability_mask is not None:
+                diff = diff * (1 - occ_masks[:,i:i+1])* explainability_mask[:,i:i+1].expand_as(diff)
+                ssim_loss = ssim_loss * (1 - occ_masks[:,i:i+1])* explainability_mask[:,i:i+1].expand_as(ssim_loss)
+            else:
+                diff = diff *(1-occ_masks[:,i:i+1]).expand_as(diff)
+                ssim_loss = ssim_loss*(1-occ_masks[:,i:i+1]).expand_as(ssim_loss)
+
+            reconstruction_loss +=  (1- wssim)*weight*oob_normalization_const*(robust_l1(diff, q=qch) + wssim*ssim_loss.mean()) + lambda_oob*robust_l1(1 - valid_pixels, q=qch)
+            assert((reconstruction_loss == reconstruction_loss).item() == 1)
+            #weight /= 2.83
+        return reconstruction_loss
+
+
+    if type(explainability_mask) not in [tuple, list]:
+        explainability_mask = [explainability_mask]
+    if type(depth) not in [list, tuple]:
+        depth = [depth]
+
+    loss = 0
+    for d, mask in zip(depth, explainability_mask):
+        occ_masks = depth_occlusion_masks(d, pose, intrinsics, intrinsics_inv)
+        loss += one_scale(d, mask, occ_masks)
+    return loss
+
+
+def photometric_reconstruction_loss_robust(tgt_img, ref_imgs, intrinsics, intrinsics_inv, depth, explainability_mask, pose, rotation_mode='euler', padding_mode='zeros', lambda_oob=0, qch=0.5, wssim=0.5):
     def one_scale(depth, explainability_mask, occ_masks):
         assert(explainability_mask is None or depth.size()[2:] == explainability_mask.size()[2:])
         assert(pose.size(1) == len(ref_imgs))
@@ -38,7 +95,7 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics, intrinsics_in
             ref_img_warped = inverse_warp(ref_img, depth[:,0], current_pose, intrinsics_scaled, intrinsics_scaled_inv, rotation_mode, padding_mode)
             valid_pixels = 1 - (ref_img_warped == 0).prod(1, keepdim=True).type_as(ref_img_warped)
             diff = (tgt_img_scaled - ref_img_warped) * valid_pixels
-            ssim_loss = 1 - ssim(tgt_img_scaled, ref_img_warped) * valid_pixels
+            ssim_loss = 1 - ssim(tgt_img_scaled, ref_img_warped) * valid_pixels#ssim(a,b)返回同样shape的c,按元素，越相似越接近1， 否则最低为0
             oob_normalization_const = valid_pixels.nelement()/valid_pixels.sum()
 
             assert((oob_normalization_const == oob_normalization_const).item() == 1)
@@ -66,17 +123,23 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics, intrinsics_in
         loss += one_scale(d, mask, occ_masks)
     return loss
 
-#loss2
+
+#loss2 E_M
 def explainability_loss(mask):
+    '''
+    mask 面积越大, 损失越大
+    :param mask:
+    :return:
+    '''
     if type(mask) not in [tuple, list]:
         mask = [mask]
     loss = 0
     for mask_scaled in mask:
-        ones_var = Variable(torch.ones(1)).expand_as(mask_scaled).type_as(mask_scaled)
+        ones_var = torch.ones(1).expand_as(mask_scaled).type_as(mask_scaled)
         loss += nn.functional.binary_cross_entropy(mask_scaled, ones_var)
     return loss
 
-#loss_3 smooth loss
+#loss_3 E_S smooth loss
 def smooth_loss(pred_disp):
     def gradient(pred):
         D_dy = pred[:, :, 1:] - pred[:, :, :-1]
@@ -101,7 +164,7 @@ def smooth_loss(pred_disp):
 #loss4 E_f, flow_loss
 def photometric_flow_loss(tgt_img, ref_imgs, flows, explainability_mask, lambda_oob=0, qch=0.5, wssim=0.5):
     '''
-        call: occlusion mask
+        call: occlusion mask:通过光流反解ref，计算差异性损失
 
     aug:
     flows:[flow_fwd,flow_bwd]
@@ -153,7 +216,7 @@ def photometric_flow_loss(tgt_img, ref_imgs, flows, explainability_mask, lambda_
 
         return reconstruction_loss
 
-    if type(flows[0]) not in [tuple, list]:
+    if type(flows[0]) not in [tuple, list]:#flows[0] is flow_fwd , a list or no
         if explainability_mask is not None:
             explainability_mask = [explainability_mask]
         flows = [[uv] for uv in flows]
@@ -170,16 +233,16 @@ def photometric_flow_loss(tgt_img, ref_imgs, flows, explainability_mask, lambda_
     return loss
 
 
-#loss_5 修改过one_scale loss func
+#loss_5 E_C 修改过one_scale loss func
 def consensus_depth_flow_mask(explainability_mask, census_mask_bwd, census_mask_fwd, exp_masks_bwd_target, exp_masks_fwd_target, THRESH, wbce):
     # Loop over each scale
 
     def one_scale(explainability_mask, census_mask_bwd, census_mask_fwd, exp_masks_bwd_target, exp_masks_fwd_target, THRESH, wbce):
     #for i in range(len(explainability_mask)):
-        exp_mask_one_scale = explainability_mask
-        census_mask_fwd_one_scale = (census_mask_fwd < THRESH).type_as(exp_mask_one_scale).prod(dim=1, keepdim=True)
-        census_mask_bwd_one_scale = (census_mask_bwd < THRESH).type_as(exp_mask_one_scale).prod(dim=1, keepdim=True)
-
+        #exp_mask_one_scale = explainability_mask
+        census_mask_fwd_one_scale = (census_mask_fwd < THRESH).type_as(explainability_mask).prod(dim=1, keepdim=True)
+        census_mask_bwd_one_scale = (census_mask_bwd < THRESH).type_as(explainability_mask).prod(dim=1, keepdim=True)
+        #census_mask_bwd_one_scale:tensor[b,1,h,w]
         #Using the pixelwise consensus term
         exp_fwd_target_one_scale = exp_masks_fwd_target
         exp_bwd_target_one_scale = exp_masks_bwd_target
@@ -197,7 +260,7 @@ def consensus_depth_flow_mask(explainability_mask, census_mask_bwd, census_mask_
 
         rigidity_mask_combined = torch.cat((census_mask_bwd_one_scale, census_mask_bwd_one_scale,
                         census_mask_fwd_one_scale, census_mask_fwd_one_scale), dim=1)
-        return weighted_binary_cross_entropy(exp_mask_one_scale, rigidity_mask_combined.type_as(exp_mask_one_scale), [wbce, 1-wbce])
+        return weighted_binary_cross_entropy(explainability_mask, rigidity_mask_combined.type_as(explainability_mask), [wbce, 1-wbce])
 
     assert (len(explainability_mask) == len(census_mask_bwd))
     assert (len(explainability_mask) == len(census_mask_fwd))

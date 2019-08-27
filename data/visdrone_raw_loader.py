@@ -45,7 +45,8 @@ class VisDroneRawLoader(object):
         def construct_sample(scene_data, i, frame_id):
             sample = [self.load_image(scene_data, i)[0], frame_id]
             if self.get_gt:
-                sample.append(self.generate_depth_map(scene_data, i))
+                #sample.append(self.generate_depth_map(scene_data, i))#no gt
+                pass
             return sample
         for i in range(len(scene_data['frame_id'])):
             frame_id = scene_data['frame_id'][i]
@@ -54,8 +55,9 @@ class VisDroneRawLoader(object):
 
 
 
-    def load_image(self, scene_data, tgt_idx):
-        img_file = scene_data['dir']/scene_data['frame_id'][tgt_idx]+'.jpg'
+    def load_image(self, scene_data, tgt_idx,format = '.jpg'):
+        #img_file = scene_data['dir']/scene_data['frame_id'][tgt_idx]+format
+        img_file = scene_data['dir']/scene_data['frame_name'][tgt_idx]+format
         if not img_file.isfile():
             return None
         img = scipy.misc.imread(img_file)
@@ -69,10 +71,11 @@ class VisDroneRawLoader(object):
         for c in self.cam_ids:
             img_files = sorted((drive).files('*.jpg'))
             #oxts = sorted((drive / 'oxts' / 'data').files('*.txt'))
-            scene_data = {'cid': c, 'dir': drive, 'speed': [], 'frame_id': [], 'rel_path': drive.name }#这里就不用cam号了，单目
+            scene_data = {'cid': c, 'dir': drive, 'speed': [], 'frame_id': [], 'rel_path': drive.name,'frame_name':[] }#这里就不用cam号了，单目
             for n, f in enumerate(img_files):
 
-                scene_data['frame_id'].append('{:07d}'.format(n+1))
+                scene_data['frame_id'].append('{:07d}'.format(n+1))#frameid严格七位数，不然没法读取，切帧的时候需要注意
+                scene_data['frame_name'].append(f.stem)
             sample = self.load_image(scene_data, 0)
             if sample is None:
                 return []

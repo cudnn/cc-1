@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(description='Inference script for DispNet learn
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 #parser.add_argument("--pretrained",  type=str, help="pretrained DispNet path",default='/home/roit/models/cc/official/dispnet_k.pth.tar')
-parser.add_argument("--pretrained",  type=str, help="pretrained DispNet path",default='/home/roit/models/cc/uav0000150_02310_v_ckp/dispnet_checkpoint.pth.tar')
+parser.add_argument("--pretrained",  type=str, help="pretrained DispNet path",default='/home/roit/models/cc/uav0000023_00870_s_ckp/dispnet_checkpoint.pth.tar')
 
 parser.add_argument("--img-height", default=256, type=int, help="Image height")
 parser.add_argument("--img-width", default=512, type=int, help="Image width")
@@ -23,9 +23,9 @@ parser.add_argument("--no-resize", action='store_true', help="no resizing is don
 
 parser.add_argument("--dataset-list", default=None, type=str, help="Dataset list file")
 parser.add_argument("--dataset-dir",
-                    default='/home/roit/datasets/VisDrone/VisDrone2019-VID-val/sequences/uav0000117_02622_v', type=str, help="Dataset directory")
+                    default='/home/roit/datasets/VisDrone/VisDrone2018-SOT-test-challenge/sequences/uav0000023_00870_s', type=str, help="Dataset directory")
 parser.add_argument("--output-dir", default='output', type=str, help="Output directory")
-parser.add_argument("--output-disp", action='store_true', help="save disparity img",default='uav0000117_02622_v/')
+parser.add_argument("--output-disp", action='store_true', help="save disparity img",default='uav0000023_00870_s/')
 parser.add_argument("--output-depth", action='store_true', help="save depth img",default='output_depth/')
 parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
 
