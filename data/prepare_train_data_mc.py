@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", metavar='DIR',
                    # help='path to original dataset',default='/home/roit/datasets/kitti_small/')
                    #help = 'path to original dataset', default = '/home/roit/datasets/VisDrone_prep_input')
+                   #help = 'path to original dataset', default = '/home/roit/datasets/MC')
                    help = 'path to original dataset', default = '/home/roit/datasets/MC')
 
 parser.add_argument("--dataset-format", type=str, default='minecraft', choices=["kitti", "cityscapes","visdrone",'minecraft'])
@@ -19,10 +20,11 @@ parser.add_argument("--static-frames", default=None,
 parser.add_argument("--with-gt", action='store_true',default=True,
                     help="If available (e.g. with KITTI), will store ground truth along with images, for validation")
 parser.add_argument("--height", type=int, default=256, help="image height")
+parser.add_argument("--width", type=int, default=512, help="image width")
+
 #parser.add_argument("--dump-root", type=str, default='/home/roit/datasets/kitti_256512', help="Where to dump the data")
 parser.add_argument("--dump-root", type=str, default=None, help="Where to dump the data")
 
-parser.add_argument("--width", type=int, default=512, help="image width")
 parser.add_argument("--num-threads", type=int, default=4, help="number of threads to use")
 
 args = parser.parse_args()
@@ -113,7 +115,7 @@ def main():
 
     #Parallel(n_jobs=args.num_threads)(delayed(dump_example)(scene) for scene in tqdm(data_loader.scenes))
     totally_imgs = 0
-    for scene_path in tqdm(data_loader.scenes):
+    for scene_path in tqdm(data_loader.scenes) :
         #dump_example(scene_path)
         scene_data = data_loader.collect_scenes(scene_path)
 

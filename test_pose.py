@@ -13,7 +13,7 @@ from inverse_warp import pose_vec2mat
 
 parser = argparse.ArgumentParser(description='Script for PoseNet testing with corresponding groundTruth from KITTI Odometry',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("pretrained_posenet", type=str, help="pretrained PoseNet path")
+parser.add_argument("--pretrained_posenet", type=str, help="pretrained PoseNet path",default='/home/roit/models/cc/official/posenet_model_best.pth.tar')
 parser.add_argument("--posenet", type=str, default="PoseNetB6", help="PoseNet model path")
 parser.add_argument("--img-height", default=256, type=int, help="Image height")
 parser.add_argument("--img-width", default=832, type=int, help="Image width")
@@ -21,7 +21,7 @@ parser.add_argument("--no-resize", action='store_true', help="no resizing is don
 parser.add_argument("--min-depth", default=1e-3)
 parser.add_argument("--max-depth", default=80)
 
-parser.add_argument("--dataset-dir", default='.', type=str, help="Dataset directory")
+parser.add_argument("--dataset-dir", default='/home/roit/datasets/kitti_odometry_color', type=str, help="Dataset directory")
 parser.add_argument("--sequences", default=['09'], type=str, nargs='*', help="sequences to test")
 parser.add_argument("--output-dir", default=None, type=str, help="Output directory for saving predictions in a big 3D numpy file")
 parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
@@ -31,7 +31,7 @@ parser.add_argument("--rotation-mode", default='euler', choices=['euler', 'quat'
 def main():
     args = parser.parse_args()
     from kitti_eval.pose_evaluation_utils import test_framework_KITTI as test_framework
-
+    # load posenet
     weights = torch.load(args.pretrained_posenet)
     seq_length = int(weights['state_dict']['conv1.0.weight'].size(1)/3)
     pose_net = getattr(models, args.posenet)(nb_ref_imgs=seq_length - 1).cuda()
@@ -71,8 +71,8 @@ def main():
         else:
             _, poses = pose_net(tgt_img_var, ref_imgs_var)
 
-        poses = poses.cpu().data[0]
-        poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
+        poses = poses.cpu().data[0]#squeeze
+        poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])#add 0
 
         inv_transform_matrices = pose_vec2mat(Variable(poses), rotation_mode=args.rotation_mode).data.numpy().astype(np.float64)
 

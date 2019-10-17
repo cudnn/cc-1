@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", metavar='DIR',
                    # help='path to original dataset',default='/home/roit/datasets/kitti_small/')
                    #help = 'path to original dataset', default = '/home/roit/datasets/VisDrone_prep_input')
-                   help = 'path to original dataset', default = '/home/roit/datasets/kitti')
+                   help = 'path to original dataset', default = '/home/roit/datasets/MC')
 
 parser.add_argument("--dataset-format", type=str, default='kitti', choices=["kitti", "cityscapes","visdrone",'minecraft'])
 parser.add_argument("--static-frames", default=None,

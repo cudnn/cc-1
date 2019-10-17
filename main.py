@@ -34,13 +34,13 @@ from itertools import chain
 from tensorboardX import SummaryWriter
 from flowutils.flowlib import flow_to_image
 from train import  train
-from validate import validate_without_gt,validate_with_gt
+from validate import validate_without_gt
 
 epsilon = 1e-8
 
 parser = argparse.ArgumentParser(description='Competitive Collaboration training on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--data', metavar='DIR',default='/home/roit/datasets/VisDrone_prep_input256512/',
+parser.add_argument('--data', metavar='DIR',default='/home/roit/datasets/2019c_256512',
                     help='path to dataset')
 parser.add_argument('--kitti-dir', dest='kitti_dir', type=str, default='/home/roit/datasets/kitti_flow/',
                     help='Path to kitti2015 scene flow dataset for optical flow validation')
@@ -106,14 +106,26 @@ parser.add_argument('--masknet', dest='masknet', type=str, default='MaskNet6', c
 parser.add_argument('--flownet', dest='flownet', type=str, default='Back2Future', choices=['Back2Future', 'FlowNetC6','FlowNetS'],
                     help='flow network architecture. Options: FlowNetC6 | Back2Future')
 #modeldict
-parser.add_argument('--pretrained-disp', dest='pretrained_disp', default='/home/roit/models/cc/official/dispnet_k.pth.tar',
+#parser.add_argument('--pretrained-disp', dest='pretrained_disp', default='/home/roit/models/cc/official/dispnet_k.pth.tar',
+#                    help='path to pre-trained dispnet model')
+#parser.add_argument('--pretrained-mask', dest='pretrained_mask', default='/home/roit/models/cc/official/masknet.pth.tar',
+#                    help='path to pre-trained Exp Pose net model')
+#parser.add_argument('--pretrained-pose', dest='pretrained_pose', default='/home/roit/models/cc/official/posenet.pth.tar',
+#                    help='path to pre-trained Exp Pose net model')
+#parser.add_argument('--pretrained-flow', dest='pretrained_flow', default='/home/roit/models/cc/official/back2future.pth.tar',
+#                    help='path to pre-trained Flow net model')
+
+#modeldict
+parser.add_argument('--pretrained-disp', dest='pretrained_disp', default='/home/roit/models/cc/official/dispnet_model_best.pth.tar',
                     help='path to pre-trained dispnet model')
-parser.add_argument('--pretrained-mask', dest='pretrained_mask', default='/home/roit/models/cc/official/masknet.pth.tar',
+parser.add_argument('--pretrained-mask', dest='pretrained_mask', default='/home/roit/models/cc/official/masknet_model_best.pth.tar',
                     help='path to pre-trained Exp Pose net model')
-parser.add_argument('--pretrained-pose', dest='pretrained_pose', default='/home/roit/models/cc/official/posenet.pth.tar',
+parser.add_argument('--pretrained-pose', dest='pretrained_pose', default='/home/roit/models/cc/official/posenet_model_best.pth.tar',
                     help='path to pre-trained Exp Pose net model')
-parser.add_argument('--pretrained-flow', dest='pretrained_flow', default='/home/roit/models/cc/official/back2future.pth.tar',
+parser.add_argument('--pretrained-flow', dest='pretrained_flow', default='/home/roit/models/cc/official/flownet_model_best.pth.tar',
                     help='path to pre-trained Flow net model')
+
+
 
 parser.add_argument('--spatial-normalize', dest='spatial_normalize', action='store_true', help='spatially normalize depth maps')
 parser.add_argument('--robust', dest='robust', action='store_true', help='train using robust losses')
@@ -397,7 +409,8 @@ def main():
             loss_val=0
         else:
             loss_val = validate_without_gt(val_loader,disp_net,pose_net,mask_net,flow_net,epoch=0, logger=logger, tb_writer=tb_writer,nb_writers=3,global_vars_dict = global_vars_dict)
-            #loss_val =0
+            #
+            loss_val =0
         tb_writer.add_scalar('epoch/val_loss', loss_val, 0)
         logger.valid_writer.write(' * Avg {}'.format(loss_val))
 
@@ -456,9 +469,7 @@ def main():
 
             for error, name in zip(depth_errors, depth_error_names):
                 training_writer.add_scalar(name, error, epoch)
-        if args.without_gt:
 
-            val_loss = 1
 
 
         #----------------------

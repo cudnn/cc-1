@@ -331,3 +331,44 @@ def edge_aware_smoothness_loss(img, pred_disp):
 
 
 
+class MaskedMSELoss(nn.Module):
+    def __init__(self):
+        super(MaskedMSELoss, self).__init__()
+
+    def forward(self, pred, target):
+        assert pred.dim() == target.dim(), "inconsistent dimensions"
+        valid_mask = (target>0).detach()
+        diff = target - pred
+        diff = diff[valid_mask]
+        self.loss = (diff ** 2).mean()
+        return self.loss
+
+class MaskedL1Loss(nn.Module):
+    def __init__(self):
+        super(MaskedL1Loss, self).__init__()
+
+    def forward(self, pred, target):
+        assert pred.dim() == target.dim(), "inconsistent dimensions"
+        valid_mask = (target>0).detach()
+        diff = target - pred
+        diff = diff[valid_mask]
+        self.loss = diff.abs().mean()
+        return self.loss
+
+
+class HistgramLoss(nn.Module):
+    def __init__(self):
+        super(HistgramLoss, self).__init__()
+
+    def forward(self, pred,target):
+        assert pred.dim() == target.dim(), "inconsistent dimensions"
+        numel = pred.numel()
+        pred=pred.detach()
+        target = target.detach()
+
+        gt_h = torch.histc(target.flatten(), bins=256, min=0, max=1).float() / numel
+        pre_h = torch.histc(pred.flatten(), bins=256, min=0, max=1).float() / numel
+
+        diff = gt_h - pre_h
+        self.loss = diff.abs().mean()
+        return self.loss*100

@@ -31,7 +31,8 @@ from loss_functions import\
     gaussian_explainability_loss, \
     smooth_loss, \
     edge_aware_smoothness_loss,\
-    consensus_depth_flow_mask
+    consensus_depth_flow_mask,\
+    HistgramLoss
 
 
 from logger import TermLogger, AverageMeter
@@ -41,7 +42,7 @@ from tensorboardX import SummaryWriter
 from flowutils.flowlib import flow_to_image
 
 
-from utils import flow2rgb,compute_all_epes,flow_diff,spatial_normalize
+from utils import flow2rgb,compute_all_epes,flow_diff,spatial_normalize,compute_errors2
 @torch.no_grad()
 def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, logger, tb_writer,nb_writers,global_vars_dict = None):
 #data prepared
@@ -90,7 +91,7 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
 
 
         #pose
-        pose = pose_net(tgt_img, ref_imgs)
+        pose = pose_net(tgt_img, ref_imgs)#[b,3,h,w]; list
 
 
 
@@ -196,15 +197,15 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
                 tb_writer.add_image('epoch 0 Input/sample{}(img{} to img{})'.format(i,i+1,i+args.sequence_length), tensor2array(ref_imgs[2][0]), 3)
                 tb_writer.add_image('epoch 0 Input/sample{}(img{} to img{})'.format(i,i+1,i+args.sequence_length), tensor2array(ref_imgs[3][0]), 4)
 
-                disp_to_show = disp[0].cpu()  # tensor disp_to_show :[1,h,w],0.5~3.1~10
+                depth_to_show = depth[0].cpu()  # tensor disp_to_show :[1,h,w],0.5~3.1~10
                 tb_writer.add_image('Disp Output/sample{}'.format(i),
-                                    tensor2array(disp_to_show, max_value=None, colormap='bone'), 0)
+                                    tensor2array(depth_to_show, max_value=None, colormap='bone'), 0)
 
 
             else:
             #2.disp
-                disp_to_show = disp[0].cpu()# tensor disp_to_show :[1,h,w],0.5~3.1~10
-                tb_writer.add_image('Disp Output/sample{}'.format(i), tensor2array(disp_to_show, max_value=None,colormap='bone'), epoch)
+                depth_to_show = disp[0].cpu()# tensor disp_to_show :[1,h,w],0.5~3.1~10
+                tb_writer.add_image('Disp Output/sample{}'.format(i), tensor2array(depth_to_show, max_value=None,colormap='bone'), epoch)
             #3. flow
                 tb_writer.add_image('Flow/Flow Output sample {}'.format(i), flow2rgb(flow_fwd[0], max_value=6),epoch)
                 tb_writer.add_image('Flow/cam_Flow Output sample {}'.format(i), flow2rgb(flow_cam[0], max_value=6),epoch)
@@ -255,57 +256,98 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
 
 
 
+@torch.no_grad()
+def validate_depth_with_gt(val_loader, disp_net, epoch, logger, tb_writer,global_vars_dict = None):
+    device = global_vars_dict['device']
+    args = global_vars_dict['args']
+    n_iter_val_depth = global_vars_dict['n_iter_val_depth']
 
-def validate_depth_with_gt(val_loader, disp_net, epoch, logger, output_writers=[]):
-    global args
+    show_samples = copy.deepcopy(args.show_samples)
+    for i in range(len(show_samples)):
+        show_samples[i] *= len(val_loader)
+        show_samples[i] = show_samples[i] // 1
+
+
     batch_time = AverageMeter()
-    error_names = ['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3']
+    error_names = ['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3','epe']
     errors = AverageMeter(i=len(error_names))
-    log_outputs = len(output_writers) > 0
 
     # switch to evaluate mode
     disp_net.eval()
 
     end = time.time()
+    fig = plt.figure(1, figsize=(8, 6))
 
-    for i, (tgt_img, depth) in enumerate(val_loader):
-        tgt_img_var = Variable(tgt_img.cuda(), volatile=True)
-        output_disp = disp_net(tgt_img_var)
+    for i, (tgt_img, depth_gt) in enumerate(val_loader):
+        tgt_img = tgt_img.to(device)#BCHW
+        depth_gt = depth_gt.to(device)
+
+        output_disp = disp_net(tgt_img)#BCHW
         if args.spatial_normalize:
             output_disp = spatial_normalize(output_disp)
 
         output_depth = 1/output_disp
 
-        depth = depth.cuda()
 
-        # compute output
 
-        if log_outputs and i % 100 == 0 and i/100 < len(output_writers):
-            index = int(i//100)
-            if epoch == 0:
-                output_writers[index].add_image('val Input', tensor2array(tgt_img[0]), 0)
-                depth_to_show = depth[0].cpu()
-                output_writers[index].add_image('val target Depth', tensor2array(depth_to_show, max_value=10), epoch)
-                depth_to_show[depth_to_show == 0] = 1000
-                disp_to_show = (1/depth_to_show).clamp(0,10)
-                output_writers[index].add_image('val target Disparity Normalized', tensor2array(disp_to_show, max_value=None, colormap='bone'), epoch)
 
-            output_writers[index].add_image('val Dispnet Output Normalized', tensor2array(output_disp.data[0].cpu(), max_value=None, colormap='bone'), epoch)
-            output_writers[index].add_image('val Depth Output', tensor2array(output_depth.data[0].cpu(), max_value=10), epoch)
 
-        errors.update(compute_errors(depth, output_depth.data.squeeze(1)))
+        errors.update(compute_errors(depth_gt.data.squeeze(1), output_depth.data.squeeze(1)))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
+
+        fig = plt.figure(1,figsize=(8,6))
+        if args.img_freq >0 and i in show_samples:#output_writers list(3)
+            if epoch == 0:#训练前的validate,目的在于先评估下网络效果
+                #1.img
+                # 不会执行第二次,注意ref_imgs axis0是batch的索引; axis 1是list(adjacent frame)的索引!
+                tb_writer.add_image('epoch 0 Input/sample{}'.format(i), tensor2array(tgt_img[0]), 0)
+                tb_writer.add_image('epoch 0 depth_gt/sample{}'.format(i), tensor2array(depth_gt[0],colormap='bone'), 0)
+                tb_writer.add_image('Depth Output/sample{}'.format(i), tensor2array(output_depth[0], max_value=None,colormap='bone'), 0)
+
+                plt.hist(tensor2array(depth_gt[0],colormap='bone').flatten()*256,256,[0,256],color='r')
+                tb_writer.add_figure(tag='histogram_gt/sample{}'.format(i), figure=fig, global_step=0)
+
+
+            else:
+            #2.disp
+                # tensor disp_to_show :[1,h,w],0.5~3.1~10
+                #disp2show = tensor2array(output_disp[0], max_value=None,colormap='bone')
+                depth2show = tensor2array(output_depth[0], max_value=None, colormap='bone')
+                #tb_writer.add_image('Disp Output/sample{}'.format(i), disp2show, epoch)
+                tb_writer.add_image('Depth Output/sample{}'.format(i),depth2show, epoch)
+                #add_figure
+
+                plt.hist(depth2show.flatten()*256, 256, [0, 256], color='r')
+                tb_writer.add_figure(tag = 'histogram_sample/sample{}'.format(i),figure=fig,global_step=epoch)
+
+        # add scalar
+        if args.scalar_freq > 0 and n_iter_val_depth % args.scalar_freq == 0:
+            pass
+            h_loss =HistgramLoss()(tgt_img,depth_gt)
+            tb_writer.add_scalar('batch/val_h_loss' ,h_loss, n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[1], errors.val[1], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[2], errors.val[2], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[3], errors.val[3], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[4], errors.val[4], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[5], errors.val[5], n_iter_val_depth)
+
         if args.log_terminal:
             logger.valid_bar.update(i)
             if i % args.print_freq == 0:
                 logger.valid_writer.write('valid: Time {} Abs Error {:.4f} ({:.4f})'.format(batch_time, errors.val[0], errors.avg[0]))
 
-    if args.log_terminal:
-        logger.valid_bar.update(len(val_loader))
+        n_iter_val_depth += 1
+        #end for
+    #if args.log_terminal:
+    #    logger.valid_bar.update(len(val_loader))
+
+    global_vars_dict['n_iter_val_depth'] = n_iter_val_depth
+
     return errors.avg, error_names
+
 
 def validate_flow_with_gt(val_loader, disp_net, pose_net, mask_net, flow_net, epoch, logger, output_writers=[]):
     global args
@@ -325,8 +367,8 @@ def validate_flow_with_gt(val_loader, disp_net, pose_net, mask_net, flow_net, ep
     poses = np.zeros(((len(val_loader)-1) * 1 * (args.sequence_length-1),6))
 
     for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, flow_gt, obj_map_gt) in enumerate(val_loader):
-        tgt_img_var = Variable(tgt_img.cuda(), volatile=True)
-        ref_imgs_var = [Variable(img.cuda(), volatile=True) for img in ref_imgs]
+        tgt_img = Variable(tgt_img.cuda(), volatile=True)
+        ref_imgs = [Variable(img.cuda(), volatile=True) for img in ref_imgs]
         intrinsics_var = Variable(intrinsics.cuda(), volatile=True)
         intrinsics_inv_var = Variable(intrinsics_inv.cuda(), volatile=True)
 
@@ -336,24 +378,24 @@ def validate_flow_with_gt(val_loader, disp_net, pose_net, mask_net, flow_net, ep
         # compute output-------------------------
 
         #1. disp fwd
-        disp = disp_net(tgt_img_var)
+        disp = disp_net(tgt_img)
         if args.spatial_normalize:
             disp = spatial_normalize(disp)
 
         depth = 1/disp
 
         #2. pose fwd
-        pose = pose_net(tgt_img_var, ref_imgs_var)
+        pose = pose_net(tgt_img, ref_imgs)
 
         #3. mask fwd
-        explainability_mask = mask_net(tgt_img_var, ref_imgs_var)
+        explainability_mask = mask_net(tgt_img, ref_imgs)
 
         #4. flow fwd
         if args.flownet == 'Back2Future':
-            flow_fwd, flow_bwd, _ = flow_net(tgt_img_var, ref_imgs_var[1:3])#前一帧，后一阵
+            flow_fwd, flow_bwd, _ = flow_net(tgt_img, ref_imgs[1:3])#前一帧，后一阵
         elif args.flownet == 'FlowNetC6':
-            flow_fwd = flow_net(tgt_img_var, ref_imgs_var[2])
-            flow_bwd = flow_net(tgt_img_var, ref_imgs_var[1])
+            flow_fwd = flow_net(tgt_img, ref_imgs[2])
+            flow_bwd = flow_net(tgt_img, ref_imgs[1])
         # compute output-------------------------
 
         if args.DEBUG:
@@ -400,23 +442,23 @@ def validate_flow_with_gt(val_loader, disp_net, pose_net, mask_net, flow_net, ep
             output_writers[index].add_image('val Rigidity Mask', tensor2array(rigidity_mask.data[0].cpu(), max_value=1, colormap='bone'), epoch)
             output_writers[index].add_image('val Rigidity Mask Census', tensor2array(rigidity_mask_census.data[0].cpu(), max_value=1, colormap='bone'), epoch)
 
-            for j,ref in enumerate(ref_imgs_var):
+            for j,ref in enumerate(ref_imgs):
                 ref_warped = inverse_warp(ref[:1], depth[:1,0], pose[:1,j],
                                           intrinsics_var[:1], intrinsics_inv_var[:1],
                                           rotation_mode=args.rotation_mode,
                                           padding_mode=args.padding_mode)[0]
 
                 output_writers[index].add_image('val Warped Outputs {}'.format(j), tensor2array(ref_warped.data.cpu()), epoch)
-                output_writers[index].add_image('val Diff Outputs {}'.format(j), tensor2array(0.5*(tgt_img_var[0] - ref_warped).abs().data.cpu()), epoch)
+                output_writers[index].add_image('val Diff Outputs {}'.format(j), tensor2array(0.5*(tgt_img[0] - ref_warped).abs().data.cpu()), epoch)
                 if explainability_mask is not None:
                     output_writers[index].add_image('val Exp mask Outputs {}'.format(j), tensor2array(explainability_mask[0,j].data.cpu(), max_value=1, colormap='bone'), epoch)
 
             if args.DEBUG:
                 # Check if pose2flow is consistant with inverse warp
-                ref_warped_from_depth = inverse_warp(ref_imgs_var[2][:1], depth[:1,0], pose[:1,2],
+                ref_warped_from_depth = inverse_warp(ref_imgs[2][:1], depth[:1,0], pose[:1,2],
                             intrinsics_var[:1], intrinsics_inv_var[:1], rotation_mode=args.rotation_mode,
                             padding_mode=args.padding_mode)[0]
-                ref_warped_from_cam_flow = flow_warp(ref_imgs_var[2][:1], flow_cam)[0]
+                ref_warped_from_cam_flow = flow_warp(ref_imgs[2][:1], flow_cam)[0]
                 print("DEBUG_INFO: Inverse_warp vs pose2flow",torch.mean(torch.abs(ref_warped_from_depth-ref_warped_from_cam_flow)).item())
                 output_writers[index].add_image('val Warped Outputs from Cam Flow', tensor2array(ref_warped_from_cam_flow.data.cpu()), epoch)
                 output_writers[index].add_image('val Warped Outputs from inverse warp', tensor2array(ref_warped_from_depth.data.cpu()), epoch)

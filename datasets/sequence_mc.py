@@ -5,6 +5,8 @@ from path import Path
 import random
 
 import torch
+
+from utils import tensor2array
 import matplotlib.pyplot as plt
 
 #文件写的有点毛病， gt的transpose不知道如何处理因为一开始的代码就是无监督
@@ -137,7 +139,7 @@ def crawl_folders_gt(folders_list, sequence_length,interval_frame=0,sample_gap =
 def load_as_float(path):
     return imread(path).astype(np.float32)
 def load_depth(path):
-    tgt_depth = np.expand_dims(np.load(path), axis=2)
+    tgt_depth = np.expand_dims(np.load(path), axis=0)
     return (255 - torch.from_numpy(tgt_depth).float()) / 255
 
 class SequenceFolder(data.Dataset):
@@ -183,6 +185,7 @@ class SequenceFolder(data.Dataset):
         if self.transform is not None:
             imgs, intrinsics = self.transform([tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
             tgt_img = imgs[0]
+            ref_imgs = imgs[1:]
 
         else:
             intrinsics = np.copy(sample['intrinsics'])

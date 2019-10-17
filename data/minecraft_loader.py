@@ -16,7 +16,7 @@ class MCLoader(object):
                  min_speed=2,
                  gt_depth=False):
         dir_path = Path(__file__).realpath().dirname()
-        test_scene_file = dir_path / 'visdrone_test_scenes.txt'
+        test_scene_file = dir_path / 'test_scenes.txt'
         with open(test_scene_file, 'r') as f:
             test_scenes = f.readlines()
         self.test_scenes = [t[:-1] for t in test_scenes]#最后要留空白行?
@@ -35,7 +35,6 @@ class MCLoader(object):
                     'depths':'depths',
                     'camfile':'cam.txt',
                     'pose':'pose.txt'}
-        print('init ok')
 
 
 
@@ -72,7 +71,7 @@ class MCLoader(object):
         depth = scipy.misc.imresize(depth, (self.img_height, self.img_width))
         return depth, zoom_x, zoom_y
 
-    def load_image(self, scene_data, tgt_idx,format = '.jpg'):
+    def load_image(self, scene_data, tgt_idx,format = '.png'):
         #img_file = scene_data['dir']/scene_data['frame_id'][tgt_idx]+format
         img_file = scene_data['root']/self.subfile['imgs']/scene_data['frame_names'][tgt_idx]+format
         if not img_file.isfile():
@@ -92,7 +91,7 @@ class MCLoader(object):
                       'frame_names':[],
                       'nums_frame':0}#这里就不用cam号了，单目
 
-        img_files = sorted((root/self.subfile['imgs']).files('*.jpg'))
+        img_files = sorted((root/self.subfile['imgs']).files('*.png'))
         #1.load imgs
         for n, f in enumerate(img_files):
 

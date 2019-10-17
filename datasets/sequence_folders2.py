@@ -4,7 +4,22 @@ from scipy.misc import imread
 from path import Path
 import random
 
-#这里决定跳帧,纯加载图片序列
+'''用于无监督序列生成，主要区别在于文件夹结构匹配
+
+root
+    |--seq1
+        |--imgs#就用到这里
+            |--0000001.jpg
+            |--...
+        |--depth
+            |--...
+
+
+
+'''
+
+
+#这里决定跳帧
 def crawl_folders(folders_list, sequence_length,shuffle = False):
         sequence_set = []
         demi_length = (sequence_length-1)//2
@@ -31,9 +46,9 @@ def crawl_folders2(folders_list, sequence_length,interval_frame=0,sample_gap = 0
     sequence_set = []
     demi_length = (sequence_length - 1) // 2
     for folder in folders_list:
-        intrinsics = np.genfromtxt(folder / 'cam.txt', delimiter=',')  # 分隔符空格
+        intrinsics = np.genfromtxt(folder/ 'cam.txt', delimiter=',')  # 分隔符空格
         intrinsics = intrinsics.astype(np.float32).reshape((3, 3))
-        imgs = sorted(folder.files('*.jpg'))
+        imgs = sorted((folder/'imgs').files('*.jpg'))
         if len(imgs) < sequence_length:#frame太少, 放弃这个folder
             continue
         #插孔抽出
@@ -91,9 +106,9 @@ class SequenceFolder(data.Dataset):
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
         if train:
-            self.samples = crawl_folders2(self.scenes, sequence_length,interval_frame=2,sample_gap=2,shuffle=True)
+            self.samples = crawl_folders2(self.scenes, sequence_length,interval_frame=0,sample_gap=0,shuffle=True)
         else:
-            self.samples = crawl_folders(self.scenes, sequence_length,shuffle=False)
+            self.samples = crawl_folders2(self.scenes, sequence_length,interval_frame=0,sample_gap=0,shuffle=False)
         self.transform = transform
 
 

@@ -1,4 +1,6 @@
-#更改 可以使用gt来train or validate
+#纯无监督
+
+
 import time
 
 import csv
@@ -35,10 +37,10 @@ from tensorboardX import SummaryWriter
 from flowutils.flowlib import flow_to_image
 from train import  train,train_gt
 from validate import validate_without_gt,validate_depth_with_gt
-from main_args import parser
+from args_main3 import parser_main3
 
 #global args
-args = parser.parse_args()
+args = parser_main3.parse_args()
 epsilon = 1e-8
 
 n_iter = 0#train iter
@@ -152,21 +154,6 @@ def main():
 
 #val set,loader 挨个建立
 
-    # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
-    if args.val_without_gt:
-        from  datasets.sequence_folders2 import SequenceFolder#就多了一级文件夹
-        val_set_without_gt = SequenceFolder(#只有图
-            args.data_dir,
-            transform=valid_transform,
-            seed=None,
-            train=False,
-            sequence_length=args.sequence_length,
-            target_transform=None
-        )
-        val_loader = torch.utils.data.DataLoader(
-            val_set_without_gt, batch_size=args.batch_size, shuffle=False,
-            num_workers=args.workers, pin_memory=True, drop_last=True)
-
     if args.val_with_depth_gt:
         from datasets.validation_folders2 import ValidationSet
 
@@ -180,27 +167,11 @@ def main():
             num_workers=args.workers, pin_memory=True, drop_last=True)
 
 
-    if args.val_with_flow_gt:#暂时没有
-        from datasets.validation_flow import ValidationFlow
-        val_flow_set = ValidationFlow(root=args.kitti_dir,
-                                        sequence_length=args.sequence_length,
-                                      transform=valid_flow_transform)
-        val_flow_loader = torch.utils.data.DataLoader(val_flow_set, batch_size=1,
-                                                      # batch size is 1 since images in kitti have different sizes
-                                                      shuffle=False, num_workers=args.workers, pin_memory=True,
-                                                      drop_last=True)
+
 
 
 
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
-    if args.val_without_gt:
-        print('{} samples found in {} valid scenes'.format(len(val_set_without_gt), len(val_set_without_gt.scenes)))
-
-
-
-
-
-
 
 
 
@@ -212,37 +183,10 @@ def main():
     if not output_exp:
         print("=> no mask loss, PoseExpnet will only output pose")
     #1.2 pose_net
-    pose_net = getattr(models, args.posenet)(nb_ref_imgs=args.sequence_length - 1).cuda()
-
-    #1.3.flow_net
-    if args.flownet=='SpyNet':
-        flow_net = getattr(models, args.flownet)(nlevels=args.nlevels, pre_normalization=normalize).cuda()
-    elif args.flownet=='FlowNetC6':#flonwtc6
-        flow_net = getattr(models, args.flownet)(nlevels=args.nlevels).cuda()
-    elif args.flownet=='FlowNetS':
-        flow_net = getattr(models, args.flownet)(nlevels=args.nlevels).cuda()
-    elif args.flownet =='Back2Future':
-        flow_net = getattr(models, args.flownet)(nlevels=args.nlevels).cuda()
-
-
-    # 1.4 mask_net
-    mask_net = getattr(models, args.masknet)(nb_ref_imgs=args.sequence_length - 1, output_exp=True).cuda()
 
 #2 载入参数
     #2.1 pose
-    if args.pretrained_pose:
-        print("=> using pre-trained weights for explainabilty and pose net")
-        weights = torch.load(args.pretrained_pose)
-        pose_net.load_state_dict(weights['state_dict'])
-    else:
-        pose_net.init_weights()
 
-    if args.pretrained_mask:
-        print("=> using pre-trained weights for explainabilty and pose net")
-        weights = torch.load(args.pretrained_mask)
-        mask_net.load_state_dict(weights['state_dict'])
-    else:
-        mask_net.init_weights()
 
     # import ipdb; ipdb.set_trace()
     if args.pretrained_disp:
@@ -252,35 +196,22 @@ def main():
     else:
         disp_net.init_weights()
 
-    if args.pretrained_flow:
-        print("=> using pre-trained weights for FlowNet")
-        weights = torch.load(args.pretrained_flow)
-        flow_net.load_state_dict(weights['state_dict'])
-    else:
-        flow_net.init_weights()
+
 
     if args.resume:
         print("=> resuming from checkpoint")
         dispnet_weights = torch.load(args.save_path/'dispnet_checkpoint.pth.tar')
-        posenet_weights = torch.load(args.save_path/'posenet_checkpoint.pth.tar')
-        masknet_weights = torch.load(args.save_path/'masknet_checkpoint.pth.tar')
-        flownet_weights = torch.load(args.save_path/'flownet_checkpoint.pth.tar')
         disp_net.load_state_dict(dispnet_weights['state_dict'])
-        pose_net.load_state_dict(posenet_weights['state_dict'])
-        flow_net.load_state_dict(flownet_weights['state_dict'])
-        mask_net.load_state_dict(masknet_weights['state_dict'])
 
 
     # import ipdb; ipdb.set_trace()
     cudnn.benchmark = True
     disp_net = torch.nn.DataParallel(disp_net)
-    pose_net = torch.nn.DataParallel(pose_net)
-    mask_net = torch.nn.DataParallel(mask_net)
-    flow_net = torch.nn.DataParallel(flow_net)
 
     print('=> setting adam solver')
 
-    parameters = chain(disp_net.parameters(), pose_net.parameters(), mask_net.parameters(), flow_net.parameters())
+    parameters = chain(disp_net.parameters())
+    
     optimizer = torch.optim.Adam(parameters, args.lr,
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)

@@ -75,13 +75,13 @@ parser.add_argument('--masknet', dest='masknet', type=str, default='MaskNet6', c
 parser.add_argument('--flownet', dest='flownet', type=str, default='Back2Future', choices=['Back2Future', 'FlowNetC6','FlowNetS'],
                     help='flow network architecture. Options: FlowNetC6 | Back2Future')
 #modeldict
-parser.add_argument('--pretrained-disp', dest='pretrained_disp', default='/home/roit/models/cc/uav0000013_01073_v_ckp/dispnet_model_best.pth.tar',
+parser.add_argument('--pretrained-disp', dest='pretrained_disp', default='/home/roit/models/cc/MC_256512/dispnet_model_best.pth.tar',
                     help='path to pre-trained dispnet model')
-parser.add_argument('--pretrained-mask', dest='pretrained_mask', default='/home/roit/models/cc/uav0000013_01073_v_ckp/masknet_model_best.pth.tar',
+parser.add_argument('--pretrained-mask', dest='pretrained_mask', default='/home/roit/models/cc/MC_256512/masknet_model_best.pth.tar',
                     help='path to pre-trained Exp Pose net model')
-parser.add_argument('--pretrained-pose', dest='pretrained_pose', default='/home/roit/models/cc/uav0000013_01073_v_ckp/posenet_model_best.pth.tar',
+parser.add_argument('--pretrained-pose', dest='pretrained_pose', default='/home/roit/models/cc/MC_256512/posenet_model_best.pth.tar',
                     help='path to pre-trained Exp Pose net model')
-parser.add_argument('--pretrained-flow', dest='pretrained_flow', default='/home/roit/models/cc/uav0000013_01073_v_ckp/flownet_model_best.pth.tar',
+parser.add_argument('--pretrained-flow', dest='pretrained_flow', default='/home/roit/models/cc/MC_256512/flownet_model_best.pth.tar',
                     help='path to pre-trained Flow net model')
 
 parser.add_argument('--spatial-normalize', dest='spatial_normalize', action='store_true', help='spatially normalize depth maps')
@@ -236,7 +236,7 @@ def main():
         seed=None,
         train=False,
         sequence_length=args.sequence_length,
-        target_transform=None, gap=1, max_len=None
+        target_transform=None
     )
     val_loader = torch.utils.data.DataLoader(
         val_set, batch_size=1, shuffle=False,
