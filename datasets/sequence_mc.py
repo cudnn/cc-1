@@ -87,7 +87,7 @@ def crawl_folders_gt(folders_list, sequence_length,interval_frame=0,sample_gap =
         imgs_folder = folder/'imgs'
 
         # all paths
-        imgs = sorted(imgs_folder.files('*.jpg'))
+        imgs = sorted(imgs_folder.files('*.png'))
         depths = sorted(depths_folder.files('*.npy'))
 
         if len(imgs) < sequence_length:#frame太少, 放弃这个folder

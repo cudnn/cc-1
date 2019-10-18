@@ -1,10 +1,6 @@
-import numpy as np
 
-a = np.array([1,2,3,4,1,2,3,1,1,4])
+test = ['a','b','c']
 
-h,b = np.histogram(a,bins=100,range=[0,100])
-import torch
+test.remove('a')
 
-print(h)
-
-print('ok')
+print(test)

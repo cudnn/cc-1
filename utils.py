@@ -67,6 +67,8 @@ def save_checkpoint(save_path, dispnet_state, posenet_state, masknet_state, flow
     file_prefixes = ['dispnet', 'posenet', 'masknet', 'flownet']
     states = [dispnet_state, posenet_state, masknet_state, flownet_state]
     for (prefix, state) in zip(file_prefixes, states):
+        if state ==None:
+            continue
         torch.save(state, save_path/'{}_{}'.format(prefix,filename))
 
     if is_best:
@@ -154,7 +156,7 @@ def robust_l1(x, q=0.5, eps=1e-2):
     return x
 
 def spatial_normalize(disp):
-    _mean = disp.mean(dim=1, keepdim=True).mean(dim=2, keepdim=True).mean(dim=3, keepdim=True)
+    _mean = disp.mean(dim=1, keepdim=True).mean(dim=2, keepdim=True).mean(dim=3, keepdim=True)#对BHWC整体求平均值
     disp = disp / _mean
     return disp
 

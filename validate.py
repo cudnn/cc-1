@@ -277,6 +277,7 @@ def validate_depth_with_gt(val_loader, disp_net, epoch, logger, tb_writer,global
 
     end = time.time()
     fig = plt.figure(1, figsize=(8, 6))
+    #criterion = MaskedL1Loss().to(device)#l1LOSS 容易优化
 
     for i, (tgt_img, depth_gt) in enumerate(val_loader):
         tgt_img = tgt_img.to(device)#BCHW
@@ -292,7 +293,8 @@ def validate_depth_with_gt(val_loader, disp_net, epoch, logger, tb_writer,global
 
 
 
-        errors.update(compute_errors(depth_gt.data.squeeze(1), output_depth.data.squeeze(1)))
+
+        errors.update(compute_errors2(depth_gt.data.squeeze(1), output_depth.data.squeeze(1)))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -326,8 +328,8 @@ def validate_depth_with_gt(val_loader, disp_net, epoch, logger, tb_writer,global
         # add scalar
         if args.scalar_freq > 0 and n_iter_val_depth % args.scalar_freq == 0:
             pass
-            h_loss =HistgramLoss()(tgt_img,depth_gt)
-            tb_writer.add_scalar('batch/val_h_loss' ,h_loss, n_iter_val_depth)
+            #h_loss =HistgramLoss()(tgt_img,depth_gt)
+            #tb_writer.add_scalar('batch/val_h_loss' ,h_loss, n_iter_val_depth)
             #tb_writer.add_scalar('batch/' + error_names[1], errors.val[1], n_iter_val_depth)
             #tb_writer.add_scalar('batch/' + error_names[2], errors.val[2], n_iter_val_depth)
             #tb_writer.add_scalar('batch/' + error_names[3], errors.val[3], n_iter_val_depth)
@@ -335,9 +337,7 @@ def validate_depth_with_gt(val_loader, disp_net, epoch, logger, tb_writer,global
             #tb_writer.add_scalar('batch/' + error_names[5], errors.val[5], n_iter_val_depth)
 
         if args.log_terminal:
-            logger.valid_bar.update(i)
-            if i % args.print_freq == 0:
-                logger.valid_writer.write('valid: Time {} Abs Error {:.4f} ({:.4f})'.format(batch_time, errors.val[0], errors.avg[0]))
+            logger.valid_logger_update(i,'Validation Abs Error {:.4f} ({:.4f})'.format(errors.val[0], errors.avg[0]))
 
         n_iter_val_depth += 1
         #end for

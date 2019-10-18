@@ -87,7 +87,7 @@ class ValidationSetSeq(data.Dataset):
             imgs2 = []
             depth = []
             for folder in folders_list:
-                current_imgs = sorted(folder.files('*.jpg'))
+                current_imgs = sorted(folder.files('*.png'))
                 current_imgs1 = current_imgs[:-1]
                 current_imgs2 = current_imgs[1:]
                 current_depth = []

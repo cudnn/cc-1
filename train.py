@@ -511,3 +511,95 @@ def train_gt_ngt(train_loader, disp_net, pose_net, mask_net, flow_net, optimizer
 
     global_vars_dict['n_iter']=n_iter
     return losses.avg[0]#epoch loss
+
+
+def train_depth_gt(train_loader, disp_net,  optimizer,  logger=None, train_writer=None,global_vars_dict=None):
+# 0. 准备
+    args=global_vars_dict['args']
+    n_iter = global_vars_dict['n_iter']
+    device = global_vars_dict['device']
+
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter(precision=4)
+    w1, w2, w3, w4 = args.cam_photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight, args.flow_photo_loss_weight
+    w5 = args.consensus_loss_weight
+
+
+
+
+
+
+
+
+#2. switch to train mode
+    disp_net.train()
+    #pose_net.train()
+    #mask_net.train()
+    #flow_net.train()
+
+    end = time.time()
+    criterion = MaskedL1Loss().to(device)#l1LOSS 容易优化
+#3. train cycle
+    numel = args.batch_size*1*256*512
+
+    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv,gt_depth )in enumerate(train_loader):
+        # measure data loading time
+        data_time.update(time.time() - end)
+        #dat
+        tgt_img = tgt_img.to(device)
+        ref_imgs = [(img.to(device)) for img in ref_imgs]
+        intrinsics = intrinsics.to(device)
+        intrinsics_inv = intrinsics_inv.to(device)
+        gt_depth= gt_depth.to(device)
+
+        #gt
+
+
+        disparities = disp_net(tgt_img)
+        if args.spatial_normalize:
+            disparities = [spatial_normalize(disp) for disp in disparities]
+
+
+        output_depth = [1/disp for disp in disparities]
+
+        output_depth = output_depth[0]#只保留最大尺度
+
+
+        # compute gradient and do Adam step
+
+        loss = criterion(gt_depth, output_depth)
+        loss.requires_grad_()
+        loss.to(device)
+
+
+        losses.update(loss.item(), args.batch_size)
+        #plt.imshow(tensor2array(output_depth[0],out_shape='HWC',colormap='bone'))
+        #
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+    #log terminal
+        logger.train_logger_update(i,
+                                   'Train batch loss {} '.format(loss.item()))
+
+    #3.4 log data
+        train_writer.add_scalar('batch/l2_loss', loss.item(), n_iter)
+
+
+
+    # 3.4 edge conditions
+        epoch_size = len(train_loader)
+        if i >= epoch_size - 1:
+            break
+
+        n_iter += 1
+
+    global_vars_dict['n_iter']=n_iter
+    return losses.avg[0]#epoch loss
+
