@@ -18,12 +18,14 @@ parser.add_argument("--dataset-format", type=str, default='minecraft', choices=[
 
 parser.add_argument("--with-gt", default=True,help="")
 #output
-parser.add_argument("--height", type=int, default=256, help="image height")
-parser.add_argument("--width", type=int, default=512, help="image width")
+parser.add_argument("--height", type=int, default=128, help="image height")
+parser.add_argument("--width", type=int, default=192, help="image width")
+parser.add_argument("--postfix",default='_128192')
 
 #parser.add_argument("--dump-root", type=str, default='/home/roit/datasets/kitti_256512', help="Where to dump the data")
 parser.add_argument("--dump-root", type=str, default=None, help="Where to dump the data")
 parser.add_argument("--num-threads", type=int, default=4, help="number of threads to use")
+parser.add_argument("--depth_format",default='png',choices=['npy','png'],help = "depth saving format")
 
 args = parser.parse_args()
 
@@ -84,7 +86,7 @@ def dump_example(scene_path):
 def main():
     dataset_dir = Path(args.dataset_dir)
     if args.dump_root==None:
-        args.dump_root = Path('/home/roit/datasets')/dataset_dir.stem+'_256512'
+        args.dump_root = Path('/home/roit/datasets')/dataset_dir.stem+args.postfix
     else:
         args.dump_root = Path(args.dump_root)
     args.dump_root.mkdir_p()
@@ -133,10 +135,15 @@ def main():
 
         # inc
         intrinsics = scene_data['intrinsics'].reshape(3, 3)
-        fx = intrinsics[0, 0]
-        fy = intrinsics[1, 1]
-        cx = intrinsics[0, 2]
-        cy = intrinsics[1, 2]
+        #fx = intrinsics[0, 0]
+        #fy = intrinsics[1, 1]
+        #cx = intrinsics[0, 2]
+        #cy = intrinsics[1, 2]
+
+        cx=args.width/2
+        cy=args.height/2
+        fx = 91.42  # fov = 70d, cx/tan(35d)
+        fy = 137.14
 
         # camfile
         dump_cam_file = dump_dir / 'cam.txt'
@@ -154,11 +161,12 @@ def main():
             scipy.misc.imsave(dump_img_file, sample['imgs'])
             #depths
             if data_loader.gt_depth:
-                dump_depth_file = dump_depths / '{}.npy'.format(sample['f_name'])
-                np.save(dump_depth_file, sample['depth'])
-
-                #depth_map = dump_depths / '{}.png'.format(sample['f_name'])
-                #scipy.misc.imsave(depth_map, sample['depth'])
+                if args.depth_format=='npy':
+                    dump_depth_file = dump_depths / '{}.npy'.format(sample['f_name'])
+                    np.save(dump_depth_file, sample['depth'])
+                if args.depth_format=='png':
+                    depth_map = dump_depths / '{}.png'.format(sample['f_name'])
+                    scipy.misc.imsave(depth_map, sample['depth'])
 
             '''
             if sample['pose']:
@@ -182,7 +190,7 @@ def main():
 
 def Split():
     print('Generating train val lists')
-    dump_root = Path(args.dataset_dir+'_256512')
+    dump_root = Path(args.dataset_dir+args.postfix)
     np.random.seed(8964)
     subfolders = dump_root.dirs()
     with open(dump_root / 'train.txt', 'w') as tf:
@@ -200,6 +208,6 @@ def Split():
     pass
 
 if __name__ == '__main__':
-    #main()
+    main()
     Split()
     print('over')

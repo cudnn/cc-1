@@ -344,16 +344,23 @@ class MaskedMSELoss(nn.Module):
         return self.loss
 
 class MaskedL1Loss(nn.Module):
+    '''
+    空定义，forward
+    '''
     def __init__(self):
         super(MaskedL1Loss, self).__init__()
 
-    def forward(self, pred, target):
-        assert pred.dim() == target.dim(), "inconsistent dimensions"
-        valid_mask = (target>0).detach()
-        diff = target - pred
-        diff = diff[valid_mask]
-        self.loss = diff.abs().mean()
-        return self.loss
+    def forward(self, target,pred):
+        if type(pred) not in [tuple, list]:
+            pred = [pred]
+        #assert pred.dim() == target.dim(), "inconsistent dimensions"
+        loss=0
+        for scaled_pred,scaled_target in zip( pred,target):
+            valid_mask = (scaled_target>0).detach()
+            diff = scaled_target - scaled_pred
+            diff = diff[valid_mask]
+            loss += diff.abs().mean()
+        return loss
 
 
 class HistgramLoss(nn.Module):
@@ -372,3 +379,95 @@ class HistgramLoss(nn.Module):
         diff = gt_h - pre_h
         self.loss = diff.abs().mean()
         return self.loss*100
+
+class ComputeErrors(nn.Module):
+    def __init__(self):
+        super(ComputeErrors, self).__init__()
+    def forward(self, gt,pred,crop):
+        gt*=255
+        pred*=255
+        abs_diff, abs_rel, sq_rel, a1, a2, a3, epe = 0, 0, 0, 0, 0, 0, 0
+        batch_size = gt.size(0)
+
+        '''
+        crop used by Garg ECCV16 to reprocude Eigen NIPS14 results
+        construct a mask of False values, with the same size as target
+        and then set to True values inside the crop
+        '''
+        if crop:
+            crop_mask = gt[0] != gt[0]
+            y1, y2 = int(0.40810811 * gt.size(1)), int(0.99189189 * gt.size(1))
+            x1, x2 = int(0.03594771 * gt.size(2)), int(0.96405229 * gt.size(2))
+            crop_mask[y1:y2, x1:x2] = 1
+
+        for current_gt, current_pred in zip(gt, pred):
+            valid = (current_gt > 0) & (current_gt < 255)
+            if crop:
+                valid = valid & crop_mask
+
+            valid_gt = current_gt[valid]
+            valid_pred = current_pred[valid].clamp(1e-3, 255)
+
+            valid_pred = valid_pred * torch.median(valid_gt) / torch.median(valid_pred)
+
+            thresh = torch.max((valid_gt / valid_pred), (valid_pred / valid_gt))
+            a1 += (thresh < 1.25).float().mean()
+            a2 += (thresh < 1.25 ** 2).float().mean()
+            a3 += (thresh < 1.25 ** 3).float().mean()
+
+            diff = valid_gt - valid_pred
+
+            abs_diff += torch.mean(torch.abs(diff))
+            abs_rel += torch.mean(torch.abs(diff) / valid_gt)
+            sq_rel += torch.mean((diff ** 2) / valid_gt) 
+
+
+        return [metric / batch_size for metric in [abs_diff, abs_rel, sq_rel, a1, a2, a3]]
+
+
+
+
+def compute_errors2(gt, pred, crop=False):
+    abs_diff, abs_rel, sq_rel, a1, a2, a3,epe = 0, 0, 0, 0, 0, 0,0
+    batch_size = gt.size(0)
+
+    '''
+    crop used by Garg ECCV16 to reprocude Eigen NIPS14 results
+    construct a mask of False values, with the same size as target
+    and then set to True values inside the crop
+    '''
+    if crop:
+        crop_mask = gt[0] != gt[0]
+        y1, y2 = int(0.40810811 * gt.size(1)), int(0.99189189 * gt.size(1))
+        x1, x2 = int(0.03594771 * gt.size(2)), int(0.96405229 * gt.size(2))
+        crop_mask[y1:y2, x1:x2] = 1
+
+    for current_gt, current_pred in zip(gt, pred):
+        valid = (current_gt > 0) & (current_gt < 80)
+        if crop:
+            valid = valid & crop_mask
+
+        valid_gt = current_gt[valid]
+        valid_pred = current_pred[valid].clamp(1e-3, 80)
+
+        valid_pred = valid_pred * torch.median(valid_gt) / torch.median(valid_pred)
+
+        thresh = torch.max((valid_gt / valid_pred), (valid_pred / valid_gt))
+        a1 += (thresh < 1.25).float().mean()
+        a2 += (thresh < 1.25 ** 2).float().mean()
+        a3 += (thresh < 1.25 ** 3).float().mean()
+
+        diff = valid_gt - valid_pred
+
+        abs_diff += torch.mean(torch.abs(diff))
+        abs_rel += torch.mean(torch.abs(diff) / valid_gt) * 100
+        sq_rel += torch.mean((diff ** 2) / valid_gt) * 100
+
+
+        epe+= torch.mean(diff ** 2)
+    return [metric / batch_size for metric in [abs_diff, abs_rel, sq_rel, a1, a2, a3,epe]]
+
+
+def VGS_loss(gt,pred):
+
+    pass

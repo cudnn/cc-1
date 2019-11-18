@@ -3,11 +3,8 @@
 
 import time
 
-import csv
 import datetime
-import os
 
-import  matplotlib.pyplot as plt
 
 import numpy as np
 import torch
@@ -18,23 +15,16 @@ import torch.utils.data
 import custom_transforms
 import models
 from utils import tensor2array, save_checkpoint
+from loss_functions import MaskedL1Loss,ComputeErrors
 
-from loss_functions import\
-    photometric_reconstruction_loss, \
-    photometric_flow_loss,\
-    explainability_loss, \
-    gaussian_explainability_loss, \
-    smooth_loss, \
-    edge_aware_smoothness_loss
 
 
 from logger import TermLogger, AverageMeter
 from path import Path
 from itertools import chain
 from tensorboardX import SummaryWriter
-from flowutils.flowlib import flow_to_image
 from train import  train_depth_gt
-from validate import validate_without_gt,validate_depth_with_gt
+from validate import validate_depth_with_gt
 from args_main3 import parser_main3
 
 #global args
@@ -70,7 +60,7 @@ def main():
     timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
 
     args.save_path = Path('checkpoints')/Path(args.data_dir).stem/timestamp
-    print('=> will save everything to {}'.format(args.save_path))
+
     args.save_path.makedirs_p()
     torch.manual_seed(args.seed)
     if args.alternating:
@@ -78,7 +68,7 @@ def main():
     #mk writers
     tb_writer = SummaryWriter(args.save_path)
 
-# Data loading code
+# Data loading code and transpose
 
     if args.data_normalization =='global':
         normalize = custom_transforms.Normalize(mean=[0.5, 0.5, 0.5],
@@ -86,13 +76,12 @@ def main():
     elif args.data_normalization =='local':
         normalize = custom_transforms.NormalizeLocally()
 
-
     valid_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
 
     print("=> fetching scenes in '{}'".format(args.data_dir))
 
     train_transform = custom_transforms.Compose([
-        custom_transforms.RandomRotate(),
+        #custom_transforms.RandomRotate(),
         custom_transforms.RandomHorizontalFlip(),
         custom_transforms.RandomScaleCrop(),
         custom_transforms.ArrayToTensor(),
@@ -107,7 +96,8 @@ def main():
         seed=args.seed,
         train=True,
         sequence_length=args.sequence_length,  # 5
-        target_transform=None
+        target_transform=None,
+        depth_format='png'
     )
 
 
@@ -126,7 +116,8 @@ def main():
 
     val_set_with_depth_gt = ValidationSet(
         args.data_dir,
-        transform=valid_transform
+        transform=valid_transform,
+        depth_format='png'
     )
 
     val_loader_depth = torch.utils.data.DataLoader(
@@ -190,29 +181,17 @@ def main():
 
 
 #预先评估下
+    criterion_train = MaskedL1Loss().to(device)  # l1LOSS 容易优化
+    criterion_val = ComputeErrors().to(device)
 
 
-    if args.pretrained_disp or args.evaluate:
-        logger.reset_valid_bar()
-
-        if args.val_with_depth_gt:
-            pass
-            depth_errors, depth_error_names = validate_depth_with_gt(val_loader_depth, disp_net, epoch=0, logger=logger,tb_writer=tb_writer,global_vars_dict=global_vars_dict)
-            mes = ''
-            for s, k in zip(depth_errors, depth_error_names):
-                mes+= k
-                mes+=' '
-                mes+= str(s)
-                mes+=' '
-
-            logger.reset_epoch_bar()
-            logger.epoch_logger_update(0,mes)
-        else:
-            logger.reset_epoch_bar()
-            logger.epoch_logger_update(0,' ')
+    #depth_error_names,depth_errors = validate_depth_with_gt(val_loader_depth, disp_net,criterion=criterion_val, epoch=0, logger=logger,tb_writer=tb_writer,global_vars_dict=global_vars_dict)
 
 
-
+    #logger.reset_epoch_bar()
+#    logger.epoch_logger_update(epoch=0,time=0,names=depth_error_names,values=depth_errors)
+    epoch_time = AverageMeter()
+    end=time.time()
 #3. main cycle
     for epoch in range(1,args.epochs):#epoch 0 在第没入循环之前已经测试了.
 
@@ -228,38 +207,51 @@ def main():
 
 
         #3.2 train for one epoch---------
-        train_loss = train_depth_gt(train_loader, disp_net, optimizer,logger, tb_writer,global_vars_dict)
+        loss_names,losses = train_depth_gt(train_loader=train_loader,
+                                    disp_net=disp_net,
+                                    optimizer=optimizer,
+                                    criterion=criterion_train,
+                                    logger=logger,
+                                    train_writer=tb_writer,
+                                    global_vars_dict=global_vars_dict)
 
         #3.3 evaluate on validation set-----
-        depth_errors, depth_error_names = validate_depth_with_gt(val_loader_depth, disp_net, epoch=epoch, logger=logger, tb_writer=tb_writer,global_vars_dict=global_vars_dict)
+        depth_error_names ,depth_errors= validate_depth_with_gt(val_loader=val_loader_depth,
+                                                                 disp_net=disp_net,
+                                                                 criterion=criterion_val,
+                                                                 epoch=epoch,
+                                                                 logger=logger,
+                                                                 tb_writer=tb_writer,
+                                                                 global_vars_dict=global_vars_dict)
 
-
-
-
-
-
+        epoch_time.update(time.time()-end)
+        end=time.time()
 
         #3.5 log_terminal
         #if args.log_terminal:
-        logger.epoch_logger_update(epoch,' * Avg Train Loss : {:.3f}'.format(train_loss))
+        if args.log_terminal:
+            logger.epoch_logger_update(epoch=epoch,time=epoch_time,names=depth_error_names,values=depth_errors)
 
 
     # tensorboard scaler
         #train loss
-        tb_writer.add_scalar('epoch/train_loss',train_loss,epoch)
+        for loss_name,loss in zip(loss_names,losses.avg):
+            tb_writer.add_scalar('train/'+loss_name,loss,epoch)
+
+
         #val_with_gt loss
-        for error, name in zip(depth_errors, depth_error_names):
-            tb_writer.add_scalar('epoch/'+name, error, epoch)
+        for name, error in zip( depth_error_names,depth_errors.avg):
+            tb_writer.add_scalar('val/'+name, error, epoch)
 
 
 
         #3.6 save model and remember lowest error and save checkpoint
-
+        total_loss = losses.avg[0]
         if best_error < 0:
-            best_error = train_loss
+            best_error = total_loss
 
-        is_best = train_loss <= best_error
-        best_error = min(best_error, train_loss)
+        is_best = total_loss <= best_error
+        best_error = min(best_error, total_loss)
         save_checkpoint(
             args.save_path,
             {

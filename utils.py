@@ -289,8 +289,8 @@ def compute_errors(gt, pred, crop=True):
 
 
         abs_diff += torch.mean(torch.abs(valid_gt - valid_pred))
-        abs_rel += torch.mean(torch.abs(valid_gt - valid_pred) / valid_gt)*100
-        sq_rel += torch.mean(((valid_gt - valid_pred)**2) / valid_gt)*100
+        abs_rel += torch.mean(torch.abs(valid_gt - valid_pred) / valid_gt)
+        sq_rel += torch.mean(((valid_gt - valid_pred)**2) / valid_gt)
 
 
     return [metric / batch_size for metric in [abs_diff, abs_rel, sq_rel, a1, a2, a3]]
@@ -333,4 +333,13 @@ def compute_errors2(gt, pred, crop=True):
     return [metric / batch_size for metric in [abs_diff, abs_rel, sq_rel, a1, a2, a3,epe]]
 
 
+
+def VGSmap(map):
+    '''
+    :param map:[0~1]
+    :return:
+   '''
+    map*=255
+
+    pass
 

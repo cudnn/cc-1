@@ -10,23 +10,37 @@ class TermLogger(object):
         self.train_size = train_size
         self.valid_size = valid_size
         self.t = Terminal()
-        space = 10#前面空10行
-        be = 1  # epoch bar position
-        bt = 3  # train bar position
-        bv = 6  # valid bar position
         h = self.t.height
-        if h ==None:
-            h=24# 终端高度
+        if h == None:
+            h = 24  # 终端高度
+        space = 13#前面空6行
+        space=h-space
+        be = 1  # epoch bar position
+        bt = 4  # train bar position
+        bv = 7  # valid bar position
+        #文字框每个三行
+        # ----epoch-----
+        # err1   err2
+        # 1.23   2.34
+        # |#####################
 
+        # ----train-----
+        # loss1  loss2
+        # 1.23   2.34
+        # |#####################
 
-        self.epoch_writer = Writer(self.t, (0, h-space))
-        self.epoch_bar_wirter = Writer(self.t, (0, h-space+be))
+        # ----validation-----
+        # loss1  loss2
+        # 1.23   2.34
+        # |23%|#####################
+        self.epoch_writer = Writer(self.t, (0, space))
+        self.epoch_bar_wirter = Writer(self.t, (0, space+3))
 
-        self.train_writer = Writer(self.t, (0, h-space+bt))#public
-        self.train_bar_writer = Writer(self.t, (0, h-space+bt+1))
+        self.train_writer = Writer(self.t, (0, space+4))#public
+        self.train_bar_writer = Writer(self.t, (0, space+7))
 
-        self.valid_writer = Writer(self.t, (0, h-space+bv))#public
-        self.valid_bar_writer = Writer(self.t, (0, h-space+bv+1))
+        self.valid_writer = Writer(self.t, (0, space+8))#public
+        self.valid_bar_writer = Writer(self.t, (0, space+11))
 
         self.reset_epoch_bar()
         self.reset_train_bar()#152 batches
@@ -42,15 +56,38 @@ class TermLogger(object):
     def reset_valid_bar(self):
         self.valid_bar = ProgressBar(maxval=self.valid_size, fd=self.valid_bar_writer).start()
     #public
-    def epoch_logger_update(self,epoch,str):
+    def epoch_logger_update(self,epoch,time,names,values):
+        headers = ''
+        for name in names:
+            headers += name + '\t'
+        display = '----epochs----{}\n'.format(time) + \
+                  headers + \
+                  '\n{}'.format(values)
+
         self.epoch_bar.update(epoch)
-        self.epoch_writer.write(str)
-    def valid_logger_update(self,batch_i,str):
-        self.valid_bar.update(batch_i + 1)  # key methods
-        self.valid_writer.write(str)
-    def train_logger_update(self,batch_i,str):
-        self.train_bar.update(batch_i + 1)  # key methods
-        self.train_writer.write(str)
+        self.epoch_writer.write(display)
+
+    def valid_logger_update(self,batch,time,names,values):
+        headers = ''
+        for name in names:
+            headers += name + '\t'
+        display = '----valid----batch time {}\n'.format(time) + \
+                  headers + \
+                  '\n{}'.format(values)
+
+        self.valid_bar.update(batch)
+        self.valid_writer.write(display)
+
+    def train_logger_update(self,batch,time,names,values):
+        headers = ''
+        for name in names:
+            headers += name + '\t'
+        display = '----train----batch time {}\n'.format(time) + \
+                  headers + \
+                  '\n{}'.format( values)
+
+        self.train_bar.update(batch)
+        self.train_writer.write(display)
 
 
 class Writer(object):
@@ -109,21 +146,39 @@ class AverageMeter(object):
 
 
 def train(logger):
-    batch_loss= random()
-    for batch_i in range(logger.train_size):
-        time.sleep(0.2)
-        logger.train_logger_update(batch_i,
-                                   'batch loss {} '.format(batch_loss))
-    return 0
-def val(logger):
-    batch_loss= random()
-
+    train_loss_names = ['train1', 'train2']
+    train_losses = AverageMeter(precision=2, i=len(train_loss_names))
+    batch_time = AverageMeter()
+    end = time.time()
     for batch_i in range(logger.valid_size):
         time.sleep(0.2)
-        logger.valid_logger_update(batch_i,
-                                   'batchloss {}'.format(batch_loss))
+        batch_time.update(time.time() - end)
+        end = time.time()
+        loss1 = random()  # loss
+        loss2 = random()
+        train_losses.update([loss1, loss2])
 
-    return 0
+        logger.train_logger_update(batch=batch_i, time=batch_time,names=train_loss_names,values=train_losses)
+
+    return train_loss_names, train_losses
+def val(logger):
+    val_loss_names=['val1','val2']
+    val_loss_errs=AverageMeter(precision=2,i=len(val_loss_names))
+    batch_time = AverageMeter()
+    end=time.time()
+    for batch_i in range(logger.valid_size):
+        time.sleep(0.2)
+        batch_time.update(time.time() - end)
+        end = time.time()
+        err1 = random()#loss
+        err2=random()
+        val_loss_errs.update([err1,err2])
+        #if term_log
+
+        logger.valid_logger_update(batch=batch_i,time=batch_time,names=val_loss_names,values=val_loss_errs)
+
+
+    return val_loss_names,val_loss_errs.avg
 
 def TermLogger_demo():
     '''
@@ -135,7 +190,6 @@ def TermLogger_demo():
     train_size=10#batchs for train
     valid_size = 6
 
-
     logger = TermLogger(n_epochs=epochs,
                         train_size=train_size,
                         valid_size=valid_size)
@@ -144,27 +198,34 @@ def TermLogger_demo():
 
     #first val
     first_val = True
+    val_losses = AverageMeter(precision=3)
     if first_val:
-        val_loss = val(logger)
+        val_names,val_losses = val(logger)
     else:
-        val_loss=0
+        val_loss = 0
 
     logger.reset_epoch_bar()
-    logger.epoch_bar.update(epoch=0)
-    logger.epoch_writer.write('epoch {} train loss{} val loss{}'.format(0, None, val_loss))
+    #logger.epoch_logger_update(epoch=0,display)
 
+    logger.epoch_bar.update(epoch=0)
+    logger.epoch_writer.write('---\n---\n---')
+    epoch_time = AverageMeter()
+    end = time.time()
     for epoch in range(1,epochs):
 
-        train_loss=train(logger)
+        train_names,train_losses=train(logger)
 
-        val_loss=val(logger)
+        val_names,val_losses=val(logger)
 
-
+        epoch_time.update(time.time()-end)
+        end = time.time()
 
 
         logger.reset_train_bar()
         logger.reset_valid_bar()
-        logger.epoch_logger_update(epoch,'train loss {} val loss{}'.format(train_loss, val_loss))
+
+        #if log_terminal
+        logger.epoch_logger_update(epoch=epoch,time=epoch_time,names=val_names,values=val_losses)
 
     logger.epoch_bar.finish()
     print('over')

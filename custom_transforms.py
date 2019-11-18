@@ -30,7 +30,7 @@ class Normalize(object):
         return images, intrinsics
 
 
-class NormalizeLocally(object):
+class NormalizeLocally(object):#in tesnor
 
     def __call__(self, images, intrinsics):
         image_tensor = torch.stack(images)

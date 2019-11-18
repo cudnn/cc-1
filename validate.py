@@ -42,7 +42,7 @@ from tensorboardX import SummaryWriter
 from flowutils.flowlib import flow_to_image
 
 
-from utils import flow2rgb,compute_all_epes,flow_diff,spatial_normalize,compute_errors2
+from utils import flow2rgb,compute_all_epes,flow_diff,spatial_normalize,compute_errors,VGSmap
 @torch.no_grad()
 def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, logger, tb_writer,nb_writers,global_vars_dict = None):
 #data prepared
@@ -256,98 +256,11 @@ def validate_without_gt(val_loader,disp_net,pose_net,mask_net, flow_net, epoch, 
 
 
 
-@torch.no_grad()
-def validate_depth_with_gt(val_loader, disp_net, epoch, logger, tb_writer,global_vars_dict = None):
-    device = global_vars_dict['device']
-    args = global_vars_dict['args']
-    n_iter_val_depth = global_vars_dict['n_iter_val_depth']
 
-    show_samples = copy.deepcopy(args.show_samples)
-    for i in range(len(show_samples)):
-        show_samples[i] *= len(val_loader)
-        show_samples[i] = show_samples[i] // 1
-
-
-    batch_time = AverageMeter()
-    error_names = ['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3','epe']
-    errors = AverageMeter(i=len(error_names))
-
-    # switch to evaluate mode
-    disp_net.eval()
-
-    end = time.time()
-    fig = plt.figure(1, figsize=(8, 6))
-    #criterion = MaskedL1Loss().to(device)#l1LOSS 容易优化
-
-    for i, (tgt_img, depth_gt) in enumerate(val_loader):
-        tgt_img = tgt_img.to(device)#BCHW
-        depth_gt = depth_gt.to(device)
-
-        output_disp = disp_net(tgt_img)#BCHW
-        if args.spatial_normalize:
-            output_disp = spatial_normalize(output_disp)
-
-        output_depth = 1/output_disp
-
-
-
-
-
-
-        errors.update(compute_errors2(depth_gt.data.squeeze(1), output_depth.data.squeeze(1)))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        fig = plt.figure(1,figsize=(8,6))
-        if args.img_freq >0 and i in show_samples:#output_writers list(3)
-            if epoch == 0:#训练前的validate,目的在于先评估下网络效果
-                #1.img
-                # 不会执行第二次,注意ref_imgs axis0是batch的索引; axis 1是list(adjacent frame)的索引!
-                tb_writer.add_image('epoch 0 Input/sample{}'.format(i), tensor2array(tgt_img[0]), 0)
-                tb_writer.add_image('epoch 0 depth_gt/sample{}'.format(i), tensor2array(depth_gt[0],colormap='bone'), 0)
-                tb_writer.add_image('Depth Output/sample{}'.format(i), tensor2array(output_depth[0], max_value=None,colormap='bone'), 0)
-
-                plt.hist(tensor2array(depth_gt[0],colormap='bone').flatten()*256,256,[0,256],color='r')
-                tb_writer.add_figure(tag='histogram_gt/sample{}'.format(i), figure=fig, global_step=0)
-
-
-            else:
-            #2.disp
-                # tensor disp_to_show :[1,h,w],0.5~3.1~10
-                #disp2show = tensor2array(output_disp[0], max_value=None,colormap='bone')
-                depth2show = tensor2array(output_depth[0], max_value=None, colormap='bone')
-                #tb_writer.add_image('Disp Output/sample{}'.format(i), disp2show, epoch)
-                tb_writer.add_image('Depth Output/sample{}'.format(i),depth2show, epoch)
-                #add_figure
-
-                plt.hist(depth2show.flatten()*256, 256, [0, 256], color='r')
-                tb_writer.add_figure(tag = 'histogram_sample/sample{}'.format(i),figure=fig,global_step=epoch)
-
-        # add scalar
-        if args.scalar_freq > 0 and n_iter_val_depth % args.scalar_freq == 0:
-            pass
-            #h_loss =HistgramLoss()(tgt_img,depth_gt)
-            #tb_writer.add_scalar('batch/val_h_loss' ,h_loss, n_iter_val_depth)
-            #tb_writer.add_scalar('batch/' + error_names[1], errors.val[1], n_iter_val_depth)
-            #tb_writer.add_scalar('batch/' + error_names[2], errors.val[2], n_iter_val_depth)
-            #tb_writer.add_scalar('batch/' + error_names[3], errors.val[3], n_iter_val_depth)
-            #tb_writer.add_scalar('batch/' + error_names[4], errors.val[4], n_iter_val_depth)
-            #tb_writer.add_scalar('batch/' + error_names[5], errors.val[5], n_iter_val_depth)
-
-        if args.log_terminal:
-            logger.valid_logger_update(i,'Validation Abs Error {:.4f} ({:.4f})'.format(errors.val[0], errors.avg[0]))
-
-        n_iter_val_depth += 1
-        #end for
-    #if args.log_terminal:
-    #    logger.valid_bar.update(len(val_loader))
-
-    global_vars_dict['n_iter_val_depth'] = n_iter_val_depth
-
-    return errors.avg, error_names
-
+def validate_pose_with_gt():
+    pass
+def validate_seg_with_gt():
+    pass
 
 def validate_flow_with_gt(val_loader, disp_net, pose_net, mask_net, flow_net, epoch, logger, output_writers=[]):
     global args
@@ -501,7 +414,96 @@ def validate_flow_with_gt(val_loader, disp_net, pose_net, mask_net, flow_net, ep
 
     return errors.avg, error_names
 
-def validate_pose_with_gt():
-    pass
-def validate_seg_with_gt():
-    pass
+@torch.no_grad()
+def validate_depth_with_gt(val_loader, disp_net,criterion, epoch, logger, tb_writer,global_vars_dict = None):
+    device = global_vars_dict['device']
+    args = global_vars_dict['args']
+    n_iter_val_depth = global_vars_dict['n_iter_val_depth']
+
+    show_samples = copy.deepcopy(args.show_samples)
+    for i in range(len(show_samples)):
+        show_samples[i] *= len(val_loader)
+        show_samples[i] = show_samples[i] // 1
+
+
+    batch_time = AverageMeter()
+    error_names = ['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3']
+    errors = AverageMeter(i=len(error_names),precision=3)
+
+    # switch to evaluate mode
+    disp_net.eval()
+
+    end = time.time()
+    fig = plt.figure(1, figsize=(8, 6))
+    #criterion = MaskedL1Loss().to(device)#l1LOSS 容易优化
+
+    for i, (tgt_img, depth_gt) in enumerate(val_loader):
+
+        tgt_img = tgt_img.to(device)#BCHW
+        depth_gt = depth_gt.to(device)
+
+        output_disp = disp_net(tgt_img)#BCHW
+        if args.spatial_normalize:
+            output_disp = spatial_normalize(output_disp)
+
+        output_depth = 255/output_disp
+
+        #err = compute_errors2(depth_gt.data.squeeze(1),output_depth.data.squeeze(1))
+        err = compute_errors(gt=depth_gt.data.squeeze(1), pred=output_depth.data.squeeze(1), crop=False)
+
+        ver_gt = VGSmap(depth_gt)
+        ver_pre = VGSmap(output_depth)
+
+        errors.update(err)
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        fig = plt.figure(1,figsize=(8,6))
+        if args.img_freq >0 and i in show_samples:#output_writers list(3)
+            if epoch == 0:#训练前的validate,目的在于先评估下网络效果
+                #1.img
+                # 不会执行第二次,注意ref_imgs axis0是batch的索引; axis 1是list(adjacent frame)的索引!
+                tb_writer.add_image('epoch 0 Input/sample{}'.format(i), tensor2array(tgt_img[0]), 0)
+                tb_writer.add_image('epoch 0 depth_gt/sample{}'.format(i), tensor2array(depth_gt[0],colormap='bone'), 0)
+                tb_writer.add_image('Depth Output/sample{}'.format(i), tensor2array(output_depth[0], max_value=None,colormap='bone'), 0)
+
+                plt.hist(tensor2array(depth_gt[0],colormap='bone').flatten()*256,256,[0,256],color='r')
+                tb_writer.add_figure(tag='histogram_gt/sample{}'.format(i), figure=fig, global_step=0)
+
+
+            else:
+            #2.disp
+                # tensor disp_to_show :[1,h,w],0.5~3.1~10
+                #disp2show = tensor2array(output_disp[0], max_value=None,colormap='bone')
+                depth2show = tensor2array(output_depth[0], max_value=None, colormap='bone')
+                #tb_writer.add_image('Disp Output/sample{}'.format(i), disp2show, epoch)
+                tb_writer.add_image('Depth Output/sample{}'.format(i),depth2show, epoch)
+                #add_figure
+
+                plt.hist(depth2show.flatten()*256, 256, [0, 256], color='r')
+                tb_writer.add_figure(tag = 'histogram_sample/sample{}'.format(i),figure=fig,global_step=epoch)
+
+        # add scalar
+        if args.scalar_freq > 0 and n_iter_val_depth % args.scalar_freq == 0:
+            pass
+            #h_loss =HistgramLoss()(tgt_img,depth_gt)
+            #tb_writer.add_scalar('batch/val_h_loss' ,h_loss, n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[1], errors.val[1], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[2], errors.val[2], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[3], errors.val[3], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[4], errors.val[4], n_iter_val_depth)
+            #tb_writer.add_scalar('batch/' + error_names[5], errors.val[5], n_iter_val_depth)
+
+        if args.log_terminal:
+            logger.valid_logger_update(batch=i,time=batch_time,names=error_names,values=errors)
+
+        n_iter_val_depth += 1
+        #end for
+    #if args.log_terminal:
+    #    logger.valid_bar.update(len(val_loader))
+
+    global_vars_dict['n_iter_val_depth'] = n_iter_val_depth
+
+    return  error_names,errors

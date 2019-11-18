@@ -3,16 +3,8 @@ import numpy as np
 from scipy.misc import imread
 from path import Path
 import torch
-
+from .utils import load_depth,load_as_float
 #with depth_gt
-
-def load_depth(path):
-    tgt_depth = np.expand_dims(np.load(path), axis=0)
-    return (255 - torch.from_numpy(tgt_depth).float()) / 255
-
-
-def load_as_float(path):
-    return imread(path).astype(np.float32)
 
 #with depth_gt
 class ValidationSet(data.Dataset):
@@ -33,15 +25,23 @@ class ValidationSet(data.Dataset):
         transform functions must take in a list a images and a numpy array which can be None
     """
 
-    def __init__(self, root, transform=None):
+    def __init__(self, root, transform=None,depth_format='png'):
 
         def crawl_folders(folders_list):
             imgs = []
             depth = []
             for folder in folders_list:
                 #all are paths
+
                 current_imgs = sorted((folder/'imgs').files('*.png'))
-                current_depth = sorted((folder/'depths').files('*.npy'))
+                if depth_format=='npy':
+                    current_depth = sorted((folder/'depths').files('*.npy'))
+                elif depth_format=='png':
+                    current_depth = sorted((folder/'depths').files('*.png'))
+                else:
+                    current_depth=None
+                    print('error')
+                    exit(-1)
 
                 imgs.extend(current_imgs)
                 depth.extend(current_depth)

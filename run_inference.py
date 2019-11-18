@@ -15,16 +15,16 @@ parser = argparse.ArgumentParser(description='Inference script for DispNet learn
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 #parser.add_argument("--pretrained",  type=str, help="pretrained DispNet path",default='/home/roit/models/cc/official/dispnet_k.pth.tar')
-parser.add_argument("--pretrained",  type=str, help="pretrained DispNet path",default='/home/roit/models/cc/epc192-24seq/dispnet_model_best.pth.tar')
+parser.add_argument("--pretrained",  type=str, help="pretrained DispNet path",default='/home/roit/models/supervised/a/dispnet_model_best.pth.tar')
 
-parser.add_argument("--img-height", default=256, type=int, help="Image height")
-parser.add_argument("--img-width", default=512, type=int, help="Image width")
+parser.add_argument("--img-height", default=128, type=int, help="Image height")
+parser.add_argument("--img-width", default=192, type=int, help="Image width")
 parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
 
 parser.add_argument("--dataset-list", default=None, type=str, help="Dataset list file")
 parser.add_argument("--dataset-dir",
                     #default='/home/roit/datasets/kitti_small/data', type=str,help="Dataset directory")
-                    default='/home/roit/datasets/MC/2019_09_26_15_03/imgs', type=str,help="Dataset directory")
+                    default='/home/roit/datasets/MC_128192/2019_10_16_16_59/imgs', type=str,help="Dataset directory")
 
 parser.add_argument("--output-dir", default='output', type=str, help="Output directory")
 parser.add_argument("--output-disp", action='store_true', help="save disparity img",default=True)

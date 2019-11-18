@@ -43,7 +43,8 @@ from flowutils.flowlib import flow_to_image
 
 from utils import compute_errors,compute_epe
 
-from loss_functions import MaskedMSELoss,MaskedL1Loss,HistgramLoss
+from loss_functions import MaskedMSELoss,MaskedL1Loss,HistgramLoss,ComputeErrors
+
 def train(train_loader, disp_net, pose_net, mask_net, flow_net, optimizer,  logger=None, train_writer=None,global_vars_dict=None):
 # 0. 准备
     args=global_vars_dict['args']
@@ -513,18 +514,18 @@ def train_gt_ngt(train_loader, disp_net, pose_net, mask_net, flow_net, optimizer
     return losses.avg[0]#epoch loss
 
 
-def train_depth_gt(train_loader, disp_net,  optimizer,  logger=None, train_writer=None,global_vars_dict=None):
+def train_depth_gt(train_loader, disp_net,  optimizer, criterion, logger=None, train_writer=None,global_vars_dict=None):
 # 0. 准备
-    args=global_vars_dict['args']
+    args = global_vars_dict['args']
     n_iter = global_vars_dict['n_iter']
     device = global_vars_dict['device']
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter(precision=4)
-    w1, w2, w3, w4 = args.cam_photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight, args.flow_photo_loss_weight
-    w5 = args.consensus_loss_weight
-
+    loss_names = ['total_loss','l1_loss','smooth']
+    losses = AverageMeter(precision=4,i=len(loss_names))
+    w1, w2 = args.gt_loss_weight, args.smooth_loss_weight
+    loss_l1 = MaskedL1Loss().to(device)
 
 
 
@@ -539,43 +540,55 @@ def train_depth_gt(train_loader, disp_net,  optimizer,  logger=None, train_write
     #flow_net.train()
 
     end = time.time()
-    criterion = MaskedL1Loss().to(device)#l1LOSS 容易优化
+
 #3. train cycle
     numel = args.batch_size*1*256*512
 
+#main cycle
     for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv,gt_depth )in enumerate(train_loader):
         # measure data loading time
+
         data_time.update(time.time() - end)
         #dat
         tgt_img = tgt_img.to(device)
         ref_imgs = [(img.to(device)) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
         intrinsics_inv = intrinsics_inv.to(device)
-        gt_depth= gt_depth.to(device)
+        gt_depth = gt_depth.to(device)#[0~1]
 
         #gt
 
 
         disparities = disp_net(tgt_img)
         if args.spatial_normalize:
-            disparities = [spatial_normalize(disp) for disp in disparities]
+            disparities = [spatial_normalize(disp) for disp in disparities]#[0.4,2.7,8.7]
 
 
         output_depth = [1/disp for disp in disparities]
 
-        output_depth = output_depth[0]#只保留最大尺度
+        #output_depth = output_depth[0]#只保留最大尺度
 
 
         # compute gradient and do Adam step
+       # pre_histcs=[]
+       # gt_histcs=[]
+       # for depth in output_depth:
+       #     pre_histcs.append(torch.histc(depth,bins=100,min=0,max=1))
 
-        loss = criterion(gt_depth, output_depth)
+
+
+
+        loss1 = loss_l1(gt_depth, output_depth)
+        loss2 = smooth_loss(output_depth)
+        loss=w1*loss1+w2*loss2
+
+        
         loss.requires_grad_()
         loss.to(device)
 
 
-        losses.update(loss.item(), args.batch_size)
+        losses.update([loss.item(), loss1.item(),loss2.item()], args.batch_size)
         #plt.imshow(tensor2array(output_depth[0],out_shape='HWC',colormap='bone'))
-        #
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -585,10 +598,11 @@ def train_depth_gt(train_loader, disp_net,  optimizer,  logger=None, train_write
         end = time.time()
 
     #log terminal
-        logger.train_logger_update(i,
-                                   'Train batch loss {} '.format(loss.item()))
+        if args.log_terminal:
+            logger.train_logger_update(batch=i,time=batch_time,names=loss_names,values=losses)
 
-    #3.4 log data
+
+    #3.4 log data#只在train这里输出batch data 尽早看看能否学习
         train_writer.add_scalar('batch/l2_loss', loss.item(), n_iter)
 
 
@@ -601,5 +615,5 @@ def train_depth_gt(train_loader, disp_net,  optimizer,  logger=None, train_write
         n_iter += 1
 
     global_vars_dict['n_iter']=n_iter
-    return losses.avg[0]#epoch loss
+    return loss_names,losses#epoch loss
 

@@ -2,7 +2,7 @@ import argparse
 
 parser_main3 = argparse.ArgumentParser(description='supervised depth estimation training',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser_main3.add_argument('--data_dir', metavar='DIR',default='/home/roit/datasets/MC_256512',
+parser_main3.add_argument('--data_dir', metavar='DIR',default='/home/roit/datasets/MC_128192',
                     help='path to dataset')
 
 parser_main3.add_argument('--name', type=str, default='visdrone_raw_256512',
@@ -19,7 +19,7 @@ parser_main3.add_argument('--padding-mode', type=str, choices=['zeros', 'border'
 # hyper paras
 parser_main3.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers')
-parser_main3.add_argument('--epochs', default=150, type=int, metavar='N',
+parser_main3.add_argument('--epochs', default=100, type=int, metavar='N',
                     help='number of total epochs to run')
 parser_main3.add_argument('--epoch-size', default=0, type=int, metavar='N',
                     help='manual epoch size (will match dataset size if not set)')
@@ -44,7 +44,8 @@ parser_main3.add_argument('--nlevels', dest='nlevels', type=int, default=6,
 parser_main3.add_argument('--dispnet', dest='dispnet', type=str, default='DispResNet6', choices=['DispNetS', 'DispNetS6', 'DispResNetS6', 'DispResNet6'],
                     help='depth network architecture,output[BCHW].')
 #modeldict
-parser_main3.add_argument('--pretrained-disp', dest='pretrained_disp', default='/home/roit/models/cc/official/dispnet_model_best.pth.tar',
+parser_main3.add_argument('--pretrained-disp', dest='pretrained_disp', default='/home/roit/models/supervised/train_from_scratch/dispnet_model_best.pth.tar',
+#parser_main3.add_argument('--pretrained-disp', dest='pretrained_disp', default=None,
                     help='path to pre-trained dispnet model')
 
 parser_main3.add_argument('--spatial-normalize', dest='spatial_normalize', action='store_true', help='spatially normalize depth maps')
@@ -59,6 +60,7 @@ parser_main3.add_argument('--log-summary', default='progress_log_summary.csv', m
                     help='csv where to save per-epoch train and valid stats')
 
 #loss weights
+parser_main3.add_argument('--gt_loss_weight',default=1,type=float)
 parser_main3.add_argument('-pc', '--cam-photo-loss-weight', default=1,type=float, help='weight for camera photometric loss for rigid pixels', metavar='W')
 parser_main3.add_argument('-pf', '--flow-photo-loss-weight', default=1, type=float, help='weight for photometric loss for non rigid optical flow', metavar='W')
 parser_main3.add_argument('-m', '--mask-loss-weight',  default=0.1,type=float, help='weight for explainabilty mask loss', metavar='W')
@@ -76,7 +78,7 @@ parser_main3.add_argument('--scalar-freq', default=10, type=int,
                     metavar='N', help='add_scalar frequency')
 parser_main3.add_argument('--img-freq', default=10, type=int,
                     metavar='N', help='add_image frequency')
-parser_main3.add_argument('--show-samples', default=[0,0.5,0.99], help='choose three samples to show out the trainning process')
+parser_main3.add_argument('--show-samples', default=[0,0.3,0.5,0.7,0.99], help='choose three samples to show out the trainning process')
 
 #logg
 parser_main3.add_argument('--log_terminal',default=True)
@@ -85,3 +87,5 @@ parser_main3.add_argument('--log_terminal',default=True)
 parser_main3.add_argument('--resume',default=False)
 
 parser_main3.add_argument('--val_with_depth_gt',default=True)
+
+parser_main3.add_argument('--display_style',choices=['white','black'],default='white')
